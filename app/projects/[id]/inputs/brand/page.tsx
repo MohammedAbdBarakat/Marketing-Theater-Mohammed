@@ -11,28 +11,43 @@ export default function BrandInputsPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const store = useProjectStore();
+  
+  // --- ADDED LOADING STATE ---
+  const [isUploading, setIsUploading] = useState(false);
+
   async function onFiles(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files;
     if (!files) return;
-    if (IS_REMOTE) {
-      const uploaded = await uploadFilesRemote(Array.from(files), "doc", id);
-      store.updateBrand({ files: [...store.brand.files, ...uploaded as any] });
-      await updateProject(id, { id: id as any }); // no-op placeholder to show persistence spot
-    } else {
-      const items = Array.from(files).map((f) => ({ id: nanoid(10), name: f.name, type: f.type, size: f.size }));
-      store.updateBrand({ files: [...store.brand.files, ...items] });
+    setIsUploading(true); // START
+    try {
+        if (IS_REMOTE) {
+        const uploaded = await uploadFilesRemote(Array.from(files), "doc", id);
+        store.updateBrand({ files: [...store.brand.files, ...uploaded as any] });
+        await updateProject(id, { id: id as any }); 
+        } else {
+        const items = Array.from(files).map((f) => ({ id: nanoid(10), name: f.name, type: f.type, size: f.size }));
+        store.updateBrand({ files: [...store.brand.files, ...items] });
+        }
+    } finally {
+        setIsUploading(false); // END
     }
   }
+
   async function onImages(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files;
     if (!files) return;
-    if (IS_REMOTE) {
-      const uploaded = await uploadFilesRemote(Array.from(files), "image", id);
-      store.updateBrand({ images: [...store.brand.images, ...uploaded.map((u) => ({ id: u.id, name: u.name, previewUrl: u.url }))] });
-      await updateProject(id, { id: id as any });
-    } else {
-      const items = Array.from(files).map((f) => ({ id: nanoid(10), name: f.name }));
-      store.updateBrand({ images: [...store.brand.images, ...items] });
+    setIsUploading(true); // START
+    try {
+        if (IS_REMOTE) {
+        const uploaded = await uploadFilesRemote(Array.from(files), "image", id);
+        store.updateBrand({ images: [...store.brand.images, ...uploaded.map((u) => ({ id: u.id, name: u.name, previewUrl: u.url }))] });
+        await updateProject(id, { id: id as any });
+        } else {
+        const items = Array.from(files).map((f) => ({ id: nanoid(10), name: f.name }));
+        store.updateBrand({ images: [...store.brand.images, ...items] });
+        }
+    } finally {
+        setIsUploading(false); // END
     }
   }
 
@@ -60,11 +75,11 @@ export default function BrandInputsPage() {
           <div className="space-y-3">
             <div>
               <label className="block text-sm mb-1">Documents</label>
-              <input type="file" multiple onChange={onFiles} className="block w-full" />
+              <input type="file" multiple onChange={onFiles} disabled={isUploading} className="block w-full disabled:opacity-50" />
             </div>
             <div>
               <label className="block text-sm mb-1">Images</label>
-              <input type="file" multiple accept="image/*" onChange={onImages} className="block w-full" />
+              <input type="file" multiple accept="image/*" onChange={onImages} disabled={isUploading} className="block w-full disabled:opacity-50" />
             </div>
             <div className="flex flex-wrap gap-2">
               {store.brand.files.map((f, i) => (
@@ -86,17 +101,22 @@ export default function BrandInputsPage() {
         </section>
       </div>
       <div className="flex justify-end gap-2">
-        <button className="px-4 py-2 rounded border" onClick={() => router.push(`/projects/${id}`)}>Back</button>
+        <button className="px-4 py-2 rounded border" onClick={() => router.push(`/projects/${id}`)} disabled={isUploading}>Back</button>
         <button
-          className="px-4 py-2 rounded bg-black text-white"
+          className="px-4 py-2 rounded bg-black text-white disabled:opacity-50 flex items-center gap-2"
+          disabled={isUploading}
           onClick={() => {
-            // Persist brand on project (remote-friendly)
             updateProject(id, { brand: store.brand } as any).finally(() => {
               router.push(`/projects/${id}/inputs/strategy`);
             });
           }}
         >
-          Continue
+          {isUploading ? (
+             <>
+               <span className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin"></span>
+               Uploading...
+             </>
+          ) : "Continue"}
         </button>
       </div>
     </div>

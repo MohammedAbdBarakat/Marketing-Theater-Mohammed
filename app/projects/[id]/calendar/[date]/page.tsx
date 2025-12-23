@@ -62,7 +62,6 @@ export default function CalendarDayPage() {
   const [busy, setBusy] = useState<null | "loadingVersions" | "generating" | "uploading">(null);
   const [error, setError] = useState<string | null>(null);
 
-  // --- 1. Load Day Entries ---
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -99,10 +98,9 @@ export default function CalendarDayPage() {
     return () => {
       mounted = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, date]);
 
-  // --- 2. Select Default Entry ---
   useEffect(() => {
     if (!dayEntries.length) {
       setSelectedEntryId(null);
@@ -111,7 +109,6 @@ export default function CalendarDayPage() {
     setSelectedEntryId((prev) => prev || dayEntries[0]!.id);
   }, [dayEntries]);
 
-  // --- 3. Load Versions for Selected Entry ---
   useEffect(() => {
     if (!selectedEntry) return;
     let mounted = true;
@@ -140,44 +137,11 @@ export default function CalendarDayPage() {
     };
   }, [id, selectedEntry?.id]);
 
-  // --- 4. Sync Draft Text ---
   useEffect(() => {
     if (!selectedEntry) return;
     if (isEditing) return;
     setDraftBaseText(current?.baseText || defaultBaseText(selectedEntry));
   }, [selectedEntry?.id, isEditing, current?.id]);
-
-  // --- 5. 🌟 NEW: Polling Logic for Async Generation ---
-  useEffect(() => {
-    // If no entry is selected or no versions exist, stop.
-    if (!selectedEntry || !current) return;
-
-    // Check if the current version already has a visual asset (Image or Carousel)
-    // Note: 'text' is always present, so we look specifically for visual types.
-    const hasMedia = current.assets.some(
-      (a) => a.kind === "image" || a.kind === "carousel"
-    );
-
-    // If we have media, we don't need to poll anymore.
-    if (hasMedia) return;
-
-    // If we don't have media yet (generation in progress), poll every 3 seconds
-    const intervalId = setInterval(() => {
-      getAssetVersions(id, selectedEntry.id)
-        .then((list) => {
-          setVersions(list);
-          // Safety: If the list shrank (unlikely) ensure cursor is valid
-          if (cursor >= list.length) {
-            setCursor(Math.max(0, list.length - 1));
-          }
-        })
-        .catch((err) => console.error("Polling failed", err));
-    }, 3000);
-
-    // Cleanup interval on unmount or when dependencies change (e.g. image arrives)
-    return () => clearInterval(intervalId);
-  }, [id, selectedEntry, current, cursor]);
-  // ---------------------------------------------------------
 
   const prettyDate = useMemo(() => {
     const d = dayjs(date);
@@ -191,21 +155,63 @@ export default function CalendarDayPage() {
     setCursor(Math.max(0, list.length - 1));
   }
 
+  // --- UPDATED LOGIC: Polling for Completion ---
   async function onGenerateNew() {
     if (!selectedEntry) return;
     setBusy("generating");
     setError(null);
     try {
-      await generateAssetVersion({
+      // 1. Start generation (Backend returns pending version immediately)
+      const newVersion = await generateAssetVersion({
         projectId: id,
         entry: selectedEntry,
         baseText: draftBaseText,
         changeRequest: editRequest || undefined,
       });
-      await refreshVersions(selectedEntry);
+
+      // Wait 10 seconds before checking the server for the first time.
+      await new Promise((r) => setTimeout(r, 10000));
+
+      // 2. Poll until the asset is ready (has visuals)
+      const MAX_RETRIES = 30; // 60 seconds (2s interval)
+      const INTERVAL = 3000;
+      let isReady = false;
+
+      for (let i = 0; i < MAX_RETRIES; i++) {
+        // Wait
+        await new Promise((r) => setTimeout(r, INTERVAL));
+
+        // Fetch latest state from server
+        const list = await getAssetVersions(id, selectedEntry.id);
+        const specificVersion = list.find((v) => v.id === newVersion.id);
+
+        // Check if visuals exist (Image URL, Video URL, or Carousel Items)
+        // Note: The backend always returns a 'text' asset, so we look for others.
+        const hasVisuals = specificVersion?.assets.some((a) => 
+          (a.kind === 'image' && a.url) || 
+          (a.kind === 'carousel' && a.items && a.items.length > 0) ||
+          (a.kind === 'video' )
+          // (a.kind === 'video' && a.url)
+        );
+
+        if (hasVisuals) {
+          setVersions(list);
+          setCursor(Math.max(0, list.length - 1)); // NOW we switch
+          isReady = true;
+          break;
+        }
+      }
+
+      if (!isReady) {
+        // If timed out, we still refresh to show whatever state we have
+        await refreshVersions(selectedEntry);
+        // Optional: you could setError("Generation took too long, check back later.")
+      }
+
       setIsEditing(false);
       setEditRequest(null);
     } catch (_err) {
+      console.error(_err);
       setError("Failed to generate assets.");
     } finally {
       setBusy(null);
@@ -398,10 +404,16 @@ export default function CalendarDayPage() {
                         </button>
                       )}
                       <button
-                        className="text-sm px-3 py-1 rounded bg-black text-white disabled:opacity-50"
+                        className="text-sm px-3 py-1 rounded bg-black text-white disabled:opacity-50 flex items-center gap-2"
                         disabled={busy === "generating" || busy === "loadingVersions"}
                         onClick={onGenerateNew}
                       >
+                         {busy === "generating" && (
+                           <svg className="animate-spin h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                           </svg>
+                         )}
                         {busy === "generating" ? "Generating..." : "Generate New Version"}
                       </button>
                     </div>
@@ -548,22 +560,46 @@ function AssetGrid({ assets }: { assets: Asset[] }) {
             </div>
           );
         }
-        return (
-          <div key={a.id} className="border rounded-lg p-3">
-            <div className="text-sm font-medium mb-2">{a.title}</div>
-            {a.thumbnailUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={a.thumbnailUrl}
-                alt="Video thumbnail"
-                className="w-full rounded border mb-2"
-              />
-            ) : null}
-            <pre className="text-xs whitespace-pre-wrap bg-gray-50 border rounded p-2">
-              {a.script}
-            </pre>
-          </div>
-        );
+        
+        // --- ADDED VIDEO SUPPORT IN GRID ---
+        if (a.kind === "video") {
+          return (
+            <div key={a.id} className="border rounded-lg p-3">
+              <div className="text-sm font-medium mb-2 flex justify-between items-center">
+                 <span>Video Asset</span>
+                 {/* Show visual cue if we have script but no video URL yet (though polling usually handles this) */}
+                 {/* {!a.url && <span className="text-xs text-yellow-600 bg-yellow-50 px-2 py-1 rounded animate-pulse">Processing...</span>} */}
+              </div>
+              
+              {/* {a.url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <video 
+                  src={a.url} 
+                  controls 
+                  className="w-full rounded border mb-2 bg-black aspect-video"
+                  poster={a.thumbnailUrl}
+                />
+              ) : (
+                <>
+                    {a.thumbnailUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={a.thumbnailUrl}
+                        alt="Video thumbnail"
+                        className="w-full rounded border mb-2 opacity-50 grayscale"
+                      />
+                    ) : null}
+                    <div className="text-xs font-semibold text-gray-500 mb-1">Script:</div>
+                    <pre className="text-xs whitespace-pre-wrap bg-gray-50 border rounded p-2 h-32 overflow-y-auto">
+                        {a.script}
+                    </pre>
+                </>
+              )} */}
+            </div>
+          );
+        }
+        
+        return null;
       })}
     </div>
   );

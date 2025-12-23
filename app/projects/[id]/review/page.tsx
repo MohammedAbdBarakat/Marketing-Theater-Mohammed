@@ -216,21 +216,25 @@ export default function ReviewPage() {
           </ul>
         </section>
       </div>
-      <div className="flex justify-end gap-2">
+       <div className="flex justify-end gap-2">
         <button
           className="px-4 py-2 rounded border"
           onClick={() => router.push(`/projects/${id}/inputs/strategy`)}
+          disabled={extracting} // Disable back during extraction too
         >
           Back
         </button>
         <button
-          className="px-4 py-2 rounded bg-black text-white"
+          className="px-4 py-2 rounded bg-black text-white disabled:opacity-50 flex items-center gap-2"
+          disabled={extracting} // Disable during extraction
           onClick={() => {
             project.updateBrand({ guidelinesText: guidelines });
             onStart();
           }}
         >
-          Start Strategy Build
+           {extracting ? (
+             <>Wait for DNA...</>
+           ) : "Start Strategy Build"}
         </button>
       </div>
     </div>

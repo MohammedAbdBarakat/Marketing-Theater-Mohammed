@@ -9,8 +9,9 @@ import { PhaseStepper } from "../../../../components/run/PhaseStepper";
 import { MeetingTheater } from "../../../../components/run/MeetingTheater";
 import { PhaseResultCard } from "../../../../components/run/PhaseResultCard";
 import { StrategySelectModal } from "../../../../components/run/StrategySelectModal";
-import { selectStrategy, getLatestRunForProject } from "../../../../lib/api";
+import { selectStrategy, getLatestRunForProject, resetPhase4 } from "../../../../lib/api";
 import { ConnectionStatus } from "../../../../components/run/ConnectionStatus";
+import Link from "next/link";
 
 export default function RunPage() {
   const { id } = useParams<{ id: string }>(); // Project ID
@@ -18,6 +19,7 @@ export default function RunPage() {
   const run = useRunStore();
   const [conn, setConn] = useState<"connecting" | "open" | "closed">("connecting");
   const [strategyPrompt, setStrategyPrompt] = useState<{ items: any[]; recommendedId?: string } | null>(null);
+  const [isResetting, setIsResetting] = useState(false);
 
   const duration = useMemo(() => ({ start: project.duration.start, end: project.duration.end }), [project.duration]);
 
@@ -54,6 +56,26 @@ export default function RunPage() {
       console.error("❌ Failed to sync run data:", e);
     }
   };
+
+  async function handleRegenerate() {
+    if (!run.runId) return;
+    const confirmed = window.confirm("Are you sure you want to delete the current Calendar and regenerate it? This cannot be undone.");
+    if (!confirmed) return;
+
+    setIsResetting(true);
+    try {
+      // A. Call the DELETE endpoint
+      await resetPhase4(run.runId);
+      
+      // B. Reload the page to restart the SSE Stream
+      // The backend will see Phase 4 is missing and start generating it again.
+      window.location.reload(); 
+    } catch (err) {
+      alert("Failed to reset run. Check console.");
+      console.error(err);
+      setIsResetting(false);
+    }
+  }
 
   useEffect(() => {
     let mounted = true;
@@ -195,9 +217,28 @@ export default function RunPage() {
         />
       )}
 
-      {run.status === "done" && (
-        <div className="rounded bg-green-50 border border-green-200 p-3 text-green-800 text-sm">
-          Run completed. Calendar synced. You can now generate assets.
+       {run.status === "done" && (
+        <div className="rounded bg-green-50 border border-green-200 p-4 flex items-center justify-between">
+          <div className="text-green-800 text-sm">
+            <strong>Run completed.</strong> Open the Calendar to view details and generate assets.
+          </div>
+          
+          <div className="flex gap-2">
+            <button 
+              onClick={handleRegenerate}
+              disabled={isResetting}
+              className="text-xs px-3 py-2 rounded border border-red-200 text-red-700 hover:bg-red-50 disabled:opacity-50"
+            >
+              {isResetting ? "Resetting..." : "♻️ Regenerate Plan"}
+            </button>
+            
+            <Link 
+              href={`/projects/${id}/calendar`}
+              className="text-xs px-3 py-2 rounded bg-green-700 text-white hover:bg-green-800"
+            >
+              Go to Calendar →
+            </Link>
+          </div>
         </div>
       )}
     </div>

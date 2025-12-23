@@ -550,3 +550,27 @@ export async function getProjects(): Promise<ProjectMeta[]> {
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
 }
+
+export async function resetPhase4(runId: string): Promise<void> {
+  if (IS_REMOTE) {
+    await http(`/runs/${runId}/reset-phase-4`, { method: "DELETE" });
+    return;
+  }
+  // Mock mode fallback (optional)
+  console.log("Mock reset phase 4");
+}
+
+
+export async function deleteProject(id: string): Promise<void> {
+  if (IS_REMOTE) {
+    await http(`/projects/${id}`, { method: "DELETE" });
+    return;
+  }
+  
+  // Mock Mode: Delete from Local Storage
+  const projects = read<Record<string, ProjectMeta>>(LS_PROJECTS, {});
+  if (projects[id]) {
+    delete projects[id];
+    write(LS_PROJECTS, projects);
+  }
+}

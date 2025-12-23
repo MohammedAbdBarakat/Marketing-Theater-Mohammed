@@ -33,6 +33,7 @@ export type ProjectState = {
   reset: () => void;
 };
 
+// --- UPDATED DEFAULTS HERE ---
 const defaults: Omit<ProjectState, "setProjectId" | "updateMeta" | "updateBrand" | "updateStrategy" | "reset"> = {
   name: "Untitled Project",
   region: "US",
@@ -49,13 +50,18 @@ const defaults: Omit<ProjectState, "setProjectId" | "updateMeta" | "updateBrand"
     files: [],
   },
   strategy: {
-    goal: "Drive awareness and signups",
-    audience: "Busy pros in tech hubs",
-    campaignStyles: ["Social", "Events", "Email"],
+    // UPDATED FOR JUMEIRAH YACHTS TEST
+    goal: "Increase high-ticket charter bookings for corporate events and sunset cruises in Dubai.",
+    audience: "Affluent tourists visiting Dubai (EU/UK/Russia) and Corporate Event Managers seeking luxury venues.",
+    campaignStyles: ["Social", "Influencers", "Events"],
     alignWithEvents: true,
-    region: "US",
+    region: "EU", // Using EU as proxy for Dubai/Intl
     timeWindow: undefined,
-    preferences: { tags: ["UGC", "Creators"], ugc: true, constraints: "Respect brand tone" },
+    preferences: { 
+      tags: ["Luxury", "Sailing", "Burj Al Arab", "VIP"], 
+      ugc: true, 
+      constraints: "Must explicitly mention the ID/Passport requirement for all guests. Focus on safety." 
+    },
   },
 };
 

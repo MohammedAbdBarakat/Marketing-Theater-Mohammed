@@ -538,7 +538,7 @@ export async function generateAsset(
 ): Promise<{ version_id: string; task_id: string; status_url: string }> {
   if (IS_REMOTE) {
     return http<{ version_id: string; task_id: string; status_url: string }>(
-      `/assets/${assetId}/generate`,
+      `/api/assets/${assetId}/generate`,
       {
         method: 'POST',
         body: JSON.stringify(request),
@@ -583,7 +583,7 @@ export async function editAsset(
 ): Promise<{ new_version_id: string; task_id: string }> {
   if (IS_REMOTE) {
     return http<{ new_version_id: string; task_id: string }>(
-      `/assets/${assetId}/edit`,
+      `/api/assets/${assetId}/edit`,
       {
         method: 'POST',
         body: JSON.stringify(request),
@@ -626,7 +626,7 @@ export async function editAsset(
 
 export async function getVersionStatus(versionId: string): Promise<AssetVersion> {
   if (IS_REMOTE) {
-    return http<AssetVersion>(`/assets/versions/${versionId}`);
+    return http<AssetVersion>(`/api/assets/versions/${versionId}`);
   }
   // Mock fallback: find in local storage
   const store = read<Record<string, AssetVersion[]>>(LS_ASSET_VERSIONS, {});
@@ -639,7 +639,7 @@ export async function getVersionStatus(versionId: string): Promise<AssetVersion>
 
 export async function getAssetHistory(assetId: string): Promise<AssetVersion[]> {
   if (IS_REMOTE) {
-    return http<AssetVersion[]>(`/assets/${assetId}/versions`);
+    return http<AssetVersion[]>(`/api/assets/${assetId}/versions`);
   }
   // Mock fallback: assetId is treated as entryId in our mock store key logic (projectId:entryId)
   // This is a bit tricky since valid mock keys need projectId. 

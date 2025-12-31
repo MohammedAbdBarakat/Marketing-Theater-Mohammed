@@ -120,7 +120,7 @@ export default function CalendarDayPage() {
       setError(null);
       try {
         await ensureDemoAssetVersion({ projectId: id, entry: selectedEntry });
-        const list = await getAssetVersions(id, selectedEntry.id);
+        const list = await getAssetHistory(selectedEntry.id);
         if (!mounted) return;
         setVersions(list);
         setCursor(Math.max(0, list.length - 1));
@@ -204,7 +204,7 @@ export default function CalendarDayPage() {
         imageOverrideUrl: imageUrl,
       });
       // Refresh list
-      const list = await getAssetVersions(id, selectedEntry.id);
+      const list = await getAssetHistory(selectedEntry.id);
       setVersions(list);
       setCursor(Math.max(0, list.length - 1));
     } catch (_err) {

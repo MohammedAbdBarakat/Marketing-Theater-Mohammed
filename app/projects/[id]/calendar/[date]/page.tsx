@@ -10,12 +10,15 @@ import { IS_REMOTE } from "../../../../../lib/config";
 import { uploadFilesRemote } from "../../../../../lib/upload";
 import {
   ensureDemoAssetVersion,
-  generateAssetVersion,
   getAssetVersions,
   getLatestRunForProject,
+  getAssetHistory,
   type Asset,
   type AssetVersion,
+  generateAssetVersion
 } from "../../../../../lib/api";
+import { BlueprintCard } from "../../../../../components/run/BlueprintCard";
+import { EditAssetModal } from "../../../../../components/run/EditAssetModal";
 
 function defaultBaseText(entry: CalendarEntry) {
   return [
@@ -47,11 +50,10 @@ export default function CalendarDayPage() {
   const [cursor, setCursor] = useState<number>(0);
   const current = versions[cursor] || null;
 
-  const [draftBaseText, setDraftBaseText] = useState("");
-  const [isEditing, setIsEditing] = useState(false);
-  const [editRequest, setEditRequest] = useState<string | null>(null);
+  // We keep draftBaseText for fallback or other logic, but BlueprintCard manages its own brief now.
+  // Except BlueprintCard needs an initial baseText. 
+  // We can pass current?.baseText or defaultBaseText(selectedEntry).
 
-  const [editPromptOpen, setEditPromptOpen] = useState(false);
   const [uploadPromptOpen, setUploadPromptOpen] = useState(false);
   const [pendingUploadPrompt, setPendingUploadPrompt] = useState<string | null>(
     null
@@ -98,7 +100,7 @@ export default function CalendarDayPage() {
     return () => {
       mounted = false;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, date]);
 
   useEffect(() => {
@@ -109,6 +111,7 @@ export default function CalendarDayPage() {
     setSelectedEntryId((prev) => prev || dayEntries[0]!.id);
   }, [dayEntries]);
 
+  // Load versions when entry changes
   useEffect(() => {
     if (!selectedEntry) return;
     let mounted = true;
@@ -121,8 +124,6 @@ export default function CalendarDayPage() {
         if (!mounted) return;
         setVersions(list);
         setCursor(Math.max(0, list.length - 1));
-        setIsEditing(false);
-        setEditRequest(null);
       } catch (_err) {
         if (!mounted) return;
         setVersions([]);
@@ -137,96 +138,31 @@ export default function CalendarDayPage() {
     };
   }, [id, selectedEntry?.id]);
 
-  useEffect(() => {
-    if (!selectedEntry) return;
-    if (isEditing) return;
-    setDraftBaseText(current?.baseText || defaultBaseText(selectedEntry));
-  }, [selectedEntry?.id, isEditing, current?.id]);
-
   const prettyDate = useMemo(() => {
     const d = dayjs(date);
     if (!d.isValid()) return date;
     return d.format("dddd, MMM D, YYYY");
   }, [date]);
 
-  async function refreshVersions(entry: CalendarEntry) {
-    const list = await getAssetVersions(id, entry.id);
-    setVersions(list);
-    setCursor(Math.max(0, list.length - 1));
-  }
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
-  // --- UPDATED LOGIC: Polling for Completion ---
-  async function onGenerateNew() {
-    if (!selectedEntry) return;
-    setBusy("generating");
-    setError(null);
-    try {
-      // 1. Start generation (Backend returns pending version immediately)
-      const newVersion = await generateAssetVersion({
-        projectId: id,
-        entry: selectedEntry,
-        baseText: draftBaseText,
-        changeRequest: editRequest || undefined,
-      });
-
-      // Wait 10 seconds before checking the server for the first time.
-      await new Promise((r) => setTimeout(r, 10000));
-
-      // 2. Poll until the asset is ready (has visuals)
-      const MAX_RETRIES = 30; // 60 seconds (2s interval)
-      const INTERVAL = 3000;
-      let isReady = false;
-
-      for (let i = 0; i < MAX_RETRIES; i++) {
-        // Wait
-        await new Promise((r) => setTimeout(r, INTERVAL));
-
-        // Fetch latest state from server
-        const list = await getAssetVersions(id, selectedEntry.id);
-        const specificVersion = list.find((v) => v.id === newVersion.id);
-
-        // Check if visuals exist (Image URL, Video URL, or Carousel Items)
-        // Note: The backend always returns a 'text' asset, so we look for others.
-        const hasVisuals = specificVersion?.assets.some((a) => 
-          (a.kind === 'image' && a.url) || 
-          (a.kind === 'carousel' && a.items && a.items.length > 0) ||
-          (a.kind === 'video' )
-          // (a.kind === 'video' && a.url)
-        );
-
-        if (hasVisuals) {
-          setVersions(list);
-          setCursor(Math.max(0, list.length - 1)); // NOW we switch
-          isReady = true;
-          break;
-        }
+  // Called when BlueprintCard reports a new or updated version
+  function onVersionUpdate(v: AssetVersion) {
+    setVersions(prev => {
+      const idx = prev.findIndex(x => x.id === v.id);
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = v;
+        return copy;
       }
-
-      if (!isReady) {
-        // If timed out, we still refresh to show whatever state we have
-        await refreshVersions(selectedEntry);
-        // Optional: you could setError("Generation took too long, check back later.")
-      }
-
-      setIsEditing(false);
-      setEditRequest(null);
-    } catch (_err) {
-      console.error(_err);
-      setError("Failed to generate assets.");
-    } finally {
-      setBusy(null);
+      return [...prev, v];
+    });
+    // If it's a new one (not in list), jump to it
+    const exists = versions.find(x => x.id === v.id);
+    if (!exists) {
+      setVersions(prev => [...prev, v]);
+      setCursor(versions.length); // jump to new end (since we append)
     }
-  }
-
-  function beginEdit(prompt: string) {
-    setEditRequest(prompt);
-    setIsEditing(true);
-  }
-
-  function cancelEdit() {
-    setIsEditing(false);
-    setEditRequest(null);
-    if (selectedEntry) setDraftBaseText(current?.baseText || defaultBaseText(selectedEntry));
   }
 
   function beginUpload(prompt: string) {
@@ -236,6 +172,7 @@ export default function CalendarDayPage() {
   }
 
   async function onFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
+    // Legacy upload logic re-enabled for now using old API if possible or mocked
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file || !selectedEntry) return;
@@ -262,11 +199,14 @@ export default function CalendarDayPage() {
       await generateAssetVersion({
         projectId: id,
         entry: selectedEntry,
-        baseText: draftBaseText,
+        baseText: defaultBaseText(selectedEntry), // Fallback
         uploadPrompt: prompt,
         imageOverrideUrl: imageUrl,
       });
-      await refreshVersions(selectedEntry);
+      // Refresh list
+      const list = await getAssetVersions(id, selectedEntry.id);
+      setVersions(list);
+      setCursor(Math.max(0, list.length - 1));
     } catch (_err) {
       setError("Failed to upload image.");
     } finally {
@@ -276,6 +216,10 @@ export default function CalendarDayPage() {
 
   const canPrev = cursor > 0;
   const canNext = cursor < versions.length - 1;
+
+  function handleEditClick() {
+    setIsEditModalOpen(true);
+  }
 
   return (
     <div className="space-y-4">
@@ -323,9 +267,8 @@ export default function CalendarDayPage() {
                 return (
                   <button
                     key={e.id}
-                    className={`w-full text-left border rounded p-3 ${
-                      active ? "border-black bg-gray-50" : "hover:bg-gray-50"
-                    }`}
+                    className={`w-full text-left border rounded p-3 ${active ? "border-black bg-gray-50" : "hover:bg-gray-50"
+                      }`}
                     onClick={() => setSelectedEntryId(e.id)}
                   >
                     <div className="flex items-start justify-between gap-2">
@@ -383,53 +326,13 @@ export default function CalendarDayPage() {
                 </div>
 
                 <div className="border rounded-lg p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm font-medium">
-                      Asset Brief (editable)
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {!isEditing ? (
-                        <button
-                          className="text-sm px-3 py-1 rounded border"
-                          onClick={() => setEditPromptOpen(true)}
-                        >
-                          Edit
-                        </button>
-                      ) : (
-                        <button
-                          className="text-sm px-3 py-1 rounded border"
-                          onClick={cancelEdit}
-                        >
-                          Cancel
-                        </button>
-                      )}
-                      <button
-                        className="text-sm px-3 py-1 rounded bg-black text-white disabled:opacity-50 flex items-center gap-2"
-                        disabled={busy === "generating" || busy === "loadingVersions"}
-                        onClick={onGenerateNew}
-                      >
-                         {busy === "generating" && (
-                           <svg className="animate-spin h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                           </svg>
-                         )}
-                        {busy === "generating" ? "Generating..." : "Generate New Version"}
-                      </button>
-                    </div>
-                  </div>
-
-                  {editRequest && isEditing ? (
-                    <div className="text-xs text-gray-600">
-                      Edit prompt: <span className="font-medium">{editRequest}</span>
-                    </div>
-                  ) : null}
-
-                  <textarea
-                    value={draftBaseText}
-                    onChange={(e) => setDraftBaseText(e.target.value)}
-                    readOnly={!isEditing}
-                    className="w-full border rounded px-3 py-2 h-32 disabled:opacity-60"
+                  <BlueprintCard
+                    assetId={selectedEntry.id}
+                    title={selectedEntry.title}
+                    channel={selectedEntry.channel}
+                    type={selectedEntry.type}
+                    currentVersion={current}
+                    onVersionUpdate={onVersionUpdate}
                   />
                 </div>
 
@@ -459,12 +362,12 @@ export default function CalendarDayPage() {
                   </div>
                 ) : !current ? (
                   <div className="border rounded p-3 text-sm text-gray-600">
-                    No generated versions yet. Click “Generate New Version”.
+                    No generated versions yet. Click “Generate” above.
                   </div>
                 ) : (
                   <div className="grid gap-3">
                     <div className="text-xs text-gray-500">
-                      Generated {new Date(current.createdAt).toLocaleString()}
+                      Generated {new Date(current.createdAt).toLocaleString()} • {current.status}
                     </div>
                     {current.changeRequest ? (
                       <div className="text-xs text-gray-600">
@@ -472,13 +375,8 @@ export default function CalendarDayPage() {
                         <span className="font-medium">{current.changeRequest}</span>
                       </div>
                     ) : null}
-                    {current.uploadPrompt ? (
-                      <div className="text-xs text-gray-600">
-                        Upload prompt:{" "}
-                        <span className="font-medium">{current.uploadPrompt}</span>
-                      </div>
-                    ) : null}
-                    <AssetGrid assets={current.assets} />
+
+                    <AssetGrid assets={current.assets} onEdit={handleEditClick} />
                   </div>
                 )}
               </>
@@ -487,17 +385,13 @@ export default function CalendarDayPage() {
         </div>
       )}
 
-      {editPromptOpen && (
-        <PromptModal
-          title="Edit Prompt (required)"
-          description="Before editing the brief, describe what you want to change."
-          placeholder="e.g., Make it more playful, add a stronger CTA, shorten the hook..."
-          confirmLabel="Start Editing"
-          onConfirm={(prompt) => {
-            setEditPromptOpen(false);
-            beginEdit(prompt);
-          }}
-          onClose={() => setEditPromptOpen(false)}
+      {selectedEntry && current && (
+        <EditAssetModal
+          isOpen={isEditModalOpen}
+          onClose={() => setIsEditModalOpen(false)}
+          assetId={selectedEntry.id}
+          sourceVersion={current}
+          onNewVersion={onVersionUpdate}
         />
       )}
 
@@ -515,7 +409,7 @@ export default function CalendarDayPage() {
   );
 }
 
-function AssetGrid({ assets }: { assets: Asset[] }) {
+function AssetGrid({ assets, onEdit }: { assets: Asset[]; onEdit?: () => void }) {
   return (
     <div className="grid gap-3">
       {assets.map((a) => {
@@ -531,8 +425,18 @@ function AssetGrid({ assets }: { assets: Asset[] }) {
         }
         if (a.kind === "image") {
           return (
-            <div key={a.id} className="border rounded-lg p-3">
-              <div className="text-sm font-medium mb-2">Image</div>
+            <div key={a.id} className="border rounded-lg p-3 relative group">
+              <div className="text-sm font-medium mb-2 flex justify-between">
+                <span>Image</span>
+                {onEdit && (
+                  <button
+                    onClick={onEdit}
+                    className="text-xs bg-white border rounded px-2 py-0.5 hover:bg-gray-50 shadow-sm"
+                  >
+                    Edit
+                  </button>
+                )}
+              </div>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={a.url}
@@ -560,45 +464,17 @@ function AssetGrid({ assets }: { assets: Asset[] }) {
             </div>
           );
         }
-        
-        // --- ADDED VIDEO SUPPORT IN GRID ---
+
         if (a.kind === "video") {
           return (
             <div key={a.id} className="border rounded-lg p-3">
               <div className="text-sm font-medium mb-2 flex justify-between items-center">
-                 <span>Video Asset</span>
-                 {/* Show visual cue if we have script but no video URL yet (though polling usually handles this) */}
-                 {/* {!a.url && <span className="text-xs text-yellow-600 bg-yellow-50 px-2 py-1 rounded animate-pulse">Processing...</span>} */}
+                <span>Video Asset</span>
               </div>
-              
-              {/* {a.url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <video 
-                  src={a.url} 
-                  controls 
-                  className="w-full rounded border mb-2 bg-black aspect-video"
-                  poster={a.thumbnailUrl}
-                />
-              ) : (
-                <>
-                    {a.thumbnailUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={a.thumbnailUrl}
-                        alt="Video thumbnail"
-                        className="w-full rounded border mb-2 opacity-50 grayscale"
-                      />
-                    ) : null}
-                    <div className="text-xs font-semibold text-gray-500 mb-1">Script:</div>
-                    <pre className="text-xs whitespace-pre-wrap bg-gray-50 border rounded p-2 h-32 overflow-y-auto">
-                        {a.script}
-                    </pre>
-                </>
-              )} */}
             </div>
           );
         }
-        
+
         return null;
       })}
     </div>

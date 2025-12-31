@@ -82,44 +82,15 @@ export type Asset =
 
 export type AssetVersion = {
   id: string;
-  projectId: string; // Keep for legacy/mock compatibility
-  entryId: string;   // Keep for legacy/mock compatibility
-  date: string;      // Keep for legacy/mock compatibility
+  projectId: string;
+  entryId: string;
+  date: string;
   createdAt: string;
-  status: 'planning' | 'processing' | 'completed' | 'failed';
   baseText: string;
   changeRequest?: string;
   uploadPrompt?: string;
   assets: Asset[];
-  render_metadata?: {
-    thought_signature?: string;
-    signatures?: Record<string, string>;
-    model?: string;
-  };
 };
-
-export interface BlueprintOverrides {
-  image_prompt?: string;
-  aspect_ratio?: string;
-  // Add other overrideable fields here
-}
-
-export interface GenerateAssetRequest {
-  blueprint_overrides?: BlueprintOverrides;
-  context?: {
-    baseText?: string;
-    channel?: string;
-    type?: string;
-    [key: string]: any;
-  };
-}
-
-export interface EditAssetRequest {
-  source_version_id: string;
-  prompt: string;
-  slide_num?: number;
-  mask_data?: string;
-}
 
 // Simple localStorage-backed simulation
 const LS_PROJECTS = "sim:projects";
@@ -357,46 +328,10 @@ export async function getLatestRunForProject(
   }
   const runs = read<Record<string, RunSnapshot>>(LS_RUNS, {});
   const list = Object.values(runs).filter((r) => r.projectId === projectId);
-  if (!list.length && projectId === 'AjKHUnbF') {
-    // If no runs for demo project, create one with a calendar entry
-    const runId = nanoid(10);
-    const demoEntry: CalendarEntry = {
-      id: nanoid(8),
-      date: '2025-12-31',
-      channel: 'Instagram',
-      type: 'Post',
-      title: 'Demo New Year Post',
-      description: 'A mock post for New Year created by ensureDemoProjects logic.'
-    };
-    runs[runId] = {
-      runId,
-      projectId,
-      createdAt: new Date().toISOString(),
-      results: {},
-      calendar: { '2025-12-31': [demoEntry] },
-    };
-    write(LS_RUNS, runs);
-    return runs[runId];
-  }
   if (!list.length) return null;
-  const latestRun = list.sort(
+  return list.sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   )[0]!;
-
-  // Also ensure demo project has at least one entry for 2025-12-31 if missing
-  if (projectId === 'AjKHUnbF' && (!latestRun.calendar || !latestRun.calendar['2025-12-31'])) {
-    const demoEntry: CalendarEntry = {
-      id: nanoid(8),
-      date: '2025-12-31',
-      channel: 'Instagram',
-      type: 'Post',
-      title: 'Demo New Year Post',
-      description: 'A mock post for New Year added to existing run.'
-    };
-    latestRun.calendar = { ...latestRun.calendar, '2025-12-31': [demoEntry] };
-    write(LS_RUNS, runs);
-  }
-  return latestRun;
 }
 
 export async function savePhaseResult(
@@ -492,161 +427,6 @@ export async function extractBusinessDNA(input: {
   );
 }
 
-// --- NEW API METHODS ---
-
-async function simulateGeneration(versionId: string, entryId: string, projectId: string) {
-  // Simulate backend processing time then update status to completed
-  await new Promise(r => setTimeout(r, 4000));
-
-  const store = read<Record<string, AssetVersion[]>>(LS_ASSET_VERSIONS, {});
-  // Ideally we use projectId from context, but for mock we might guess it if not passed.
-  // Actually, we pass projectId to this function.
-  const key = versionKey(projectId, entryId);
-  const versions = store[key] || [];
-
-  const idx = versions.findIndex(v => v.id === versionId);
-  if (idx === -1) return;
-
-  const v = versions[idx];
-  // Re-generate assets to simulate "result"
-  const mockEntry: EntryLike = {
-    id: entryId,
-    date: v.date,
-    channel: "Instagram",
-    type: "Post",
-    title: "Mock Generated Asset"
-  };
-
-  const assets = generateAssetsMock({
-    entry: mockEntry,
-    baseText: v.baseText,
-  });
-
-  versions[idx] = {
-    ...v,
-    status: 'completed',
-    assets
-  };
-
-  store[key] = versions;
-  write(LS_ASSET_VERSIONS, store);
-}
-
-export async function generateAsset(
-  assetId: string,
-  request: GenerateAssetRequest
-): Promise<{ version_id: string; task_id: string; status_url: string }> {
-  if (IS_REMOTE) {
-    return http<{ version_id: string; task_id: string; status_url: string }>(
-      `/assets/${assetId}/generate`,
-      {
-        method: 'POST',
-        body: JSON.stringify(request),
-      }
-    );
-  }
-
-  // Mock Implementation
-  const projects = read<Record<string, ProjectMeta>>(LS_PROJECTS, {});
-  const pid = Object.keys(projects)[0] || "demo-project";
-
-  const v: AssetVersion = {
-    id: nanoid(10),
-    projectId: pid,
-    entryId: assetId,
-    date: new Date().toISOString(),
-    createdAt: new Date().toISOString(),
-    status: 'processing',
-    baseText: request.context?.baseText || "Mock Brief",
-    assets: [],
-  };
-
-  // We assume the assetId matches entryId for mocks
-  const key = versionKey(pid, assetId);
-  const store = read<Record<string, AssetVersion[]>>(LS_ASSET_VERSIONS, {});
-  const list = store[key] || [];
-  store[key] = [...list, v];
-  write(LS_ASSET_VERSIONS, store);
-
-  simulateGeneration(v.id, assetId, pid);
-
-  return {
-    version_id: v.id,
-    task_id: "mock-task-" + nanoid(),
-    status_url: "mock://status"
-  };
-}
-
-export async function editAsset(
-  assetId: string,
-  request: EditAssetRequest
-): Promise<{ new_version_id: string; task_id: string }> {
-  if (IS_REMOTE) {
-    return http<{ new_version_id: string; task_id: string }>(
-      `/assets/${assetId}/edit`,
-      {
-        method: 'POST',
-        body: JSON.stringify(request),
-      }
-    );
-  }
-
-  // Mock Edit
-  const projects = read<Record<string, ProjectMeta>>(LS_PROJECTS, {});
-  const pid = Object.keys(projects)[0] || "demo-project";
-
-  const store = read<Record<string, AssetVersion[]>>(LS_ASSET_VERSIONS, {});
-  const key = versionKey(pid, assetId);
-  const list = store[key] || [];
-
-  const source = list.find(x => x.id === request.source_version_id);
-
-  const v: AssetVersion = {
-    id: nanoid(10),
-    projectId: pid,
-    entryId: assetId,
-    date: new Date().toISOString(),
-    createdAt: new Date().toISOString(),
-    status: 'processing',
-    baseText: source?.baseText || "Edited Brief",
-    changeRequest: request.prompt,
-    assets: [],
-  };
-
-  store[key] = [...list, v];
-  write(LS_ASSET_VERSIONS, store);
-
-  simulateGeneration(v.id, assetId, pid);
-
-  return {
-    new_version_id: v.id,
-    task_id: "mock-task-edit-" + nanoid()
-  };
-}
-
-export async function getVersionStatus(versionId: string): Promise<AssetVersion> {
-  if (IS_REMOTE) {
-    return http<AssetVersion>(`/assets/versions/${versionId}`);
-  }
-  // Mock fallback: find in local storage
-  const store = read<Record<string, AssetVersion[]>>(LS_ASSET_VERSIONS, {});
-  for (const key in store) {
-    const found = store[key].find(v => v.id === versionId);
-    if (found) return found;
-  }
-  throw new Error("Version not found in mock store");
-}
-
-export async function getAssetHistory(assetId: string): Promise<AssetVersion[]> {
-  if (IS_REMOTE) {
-    return http<AssetVersion[]>(`/assets/${assetId}/versions`);
-  }
-  // Mock fallback: assetId is treated as entryId in our mock store key logic (projectId:entryId)
-  // This is a bit tricky since valid mock keys need projectId. 
-  // For now, in mock mode, we might fallback to empty or rely on the old getAssetVersions signature.
-  return [];
-}
-
 export async function getAssetVersions(
   projectId: string,
   entryId: string
@@ -696,7 +476,6 @@ export async function generateAssetVersion(input: {
     entryId: input.entry.id,
     date: input.entry.date,
     createdAt: new Date().toISOString(),
-    status: 'completed',
     baseText,
     changeRequest: input.changeRequest,
     uploadPrompt: input.uploadPrompt,
@@ -787,7 +566,7 @@ export async function deleteProject(id: string): Promise<void> {
     await http(`/projects/${id}`, { method: "DELETE" });
     return;
   }
-
+  
   // Mock Mode: Delete from Local Storage
   const projects = read<Record<string, ProjectMeta>>(LS_PROJECTS, {});
   if (projects[id]) {

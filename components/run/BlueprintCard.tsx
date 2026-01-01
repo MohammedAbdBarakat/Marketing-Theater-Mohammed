@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
     type AssetVersion,
     generateAsset,
@@ -38,7 +38,9 @@ export function BlueprintCard({
     // Actually, we usually want to show the baseText of the current version.
     useEffect(() => {
         if (currentVersion) {
-            setBaseText(currentVersion.baseText);
+            // Use prompt_snapshot; if it's JSON, we might want to parse it, but for now allow editing raw or empty.
+            // If the backend sends JSON, this might look ugly, but it's what we have.
+            setBaseText(currentVersion.prompt_snapshot || "");
         } else {
             // Default brief logic could be here or passed in. 
             // For now we start empty or let the user edit.
@@ -49,22 +51,42 @@ export function BlueprintCard({
     }, [currentVersion, title, channel, type]);
 
     // Polling logic
+    // Use ref to access latest currentVersion without re-triggering polling effect
+    const currentVersionRef = useRef(currentVersion);
+    useEffect(() => { currentVersionRef.current = currentVersion; }, [currentVersion]);
+
+    // Polling logic
     useEffect(() => {
-        if (!isPolling || !currentVersion) return;
+        if (!isPolling) return;
 
-        // If status is final, stop polling
-        if (currentVersion.status === 'completed' || currentVersion.status === 'failed') {
-            setIsPolling(false);
-            setIsGenerating(false);
-            return;
-        }
+        const tick = async () => {
+            const cv = currentVersionRef.current;
+            if (!cv) return;
 
-        const interval = setInterval(async () => {
+            // If status is final, stop polling (double check)
+            if (cv.status === 'completed' || cv.status === 'failed') {
+                setIsPolling(false);
+                setIsGenerating(false);
+                return;
+            }
+
             try {
-                const status = await getVersionStatus(currentVersion.id);
-                if (status.status !== currentVersion.status || status.assets.length !== currentVersion.assets.length) {
+                const status = await getVersionStatus(cv.id);
+
+                // Safe comparison
+                const currentAssetsLen = cv.assets?.length ?? 0;
+                const newAssetsLen = status.assets?.length ?? 0;
+
+                const hasChanged =
+                    status.status !== cv.status ||
+                    newAssetsLen !== currentAssetsLen ||
+                    // Optional: Check if thought signature updated
+                    status.render_metadata?.thought_signature !== cv.render_metadata?.thought_signature;
+
+                if (hasChanged) {
                     onVersionUpdate(status);
                 }
+
                 if (status.status === 'completed' || status.status === 'failed') {
                     setIsPolling(false);
                     setIsGenerating(false);
@@ -72,14 +94,15 @@ export function BlueprintCard({
             } catch (err) {
                 console.error("Polling failed", err);
             }
-        }, 2000);
+        };
 
+        const interval = setInterval(tick, 2000);
         return () => clearInterval(interval);
-    }, [isPolling, currentVersion, onVersionUpdate]);
+    }, [isPolling, onVersionUpdate]);
 
     // If we receive a version that is processing (e.g. on mount), start polling
     useEffect(() => {
-        if (currentVersion && (currentVersion.status === 'processing' || currentVersion.status === 'planning')) {
+        if (currentVersion && (currentVersion.status === 'processing')) {
             setIsPolling(true);
             setIsGenerating(true);
         }

@@ -369,10 +369,10 @@ export default function CalendarDayPage() {
                     <div className="text-xs text-gray-500">
                       Generated {new Date(current.createdAt).toLocaleString()} • {current.status}
                     </div>
-                    {current.changeRequest ? (
+                    {current.edit_reason ? (
                       <div className="text-xs text-gray-600">
                         Change request:{" "}
-                        <span className="font-medium">{current.changeRequest}</span>
+                        <span className="font-medium">{current.edit_reason}</span>
                       </div>
                     ) : null}
 
@@ -410,6 +410,7 @@ export default function CalendarDayPage() {
 }
 
 function AssetGrid({ assets, onEdit }: { assets: Asset[]; onEdit?: () => void }) {
+  if (!assets) return null;
   return (
     <div className="grid gap-3">
       {assets.map((a) => {

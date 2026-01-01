@@ -39,14 +39,20 @@ export default function ReviewPage() {
 
   async function onExtract() {
     setExtracting(true);
-    const dna = await extractBusinessDNA({
-      projectId: id,
-      files: project.brand.files,
-      images: project.brand.images,
-    });
-    project.updateBrand(dna);
-    setGuidelines(dna.guidelinesText || "");
-    setExtracting(false);
+    try {
+      const dna = await extractBusinessDNA({
+        projectId: id,
+        files: project.brand.files,
+        images: project.brand.images,
+      });
+      project.updateBrand(dna);
+      setGuidelines(dna.guidelinesText || "");
+    } catch (e) {
+      console.error("Extraction failed", e);
+      // Optionally alert user or show error state
+    } finally {
+      setExtracting(false);
+    }
   }
 
   return (
@@ -216,7 +222,7 @@ export default function ReviewPage() {
           </ul>
         </section>
       </div>
-       <div className="flex justify-end gap-2">
+      <div className="flex justify-end gap-2">
         <button
           className="px-4 py-2 rounded border"
           onClick={() => router.push(`/projects/${id}/inputs/strategy`)}
@@ -232,9 +238,9 @@ export default function ReviewPage() {
             onStart();
           }}
         >
-           {extracting ? (
-             <>Wait for DNA...</>
-           ) : "Start Strategy Build"}
+          {extracting ? (
+            <>Wait for DNA...</>
+          ) : "Start Strategy Build"}
         </button>
       </div>
     </div>

@@ -80,22 +80,30 @@ export type Asset =
   | { id: string; kind: "video"; title: string; script: string; thumbnailUrl?: string }
   | { id: string; kind: "text"; title: string; text: string };
 
+
+export interface AssetItem {
+  url: string;
+  alt?: string;
+  kind?: "image" | "video" | "text" | "carousel"; // inferred or optional
+  [key: string]: any;
+}
+
 export type AssetVersion = {
   id: string;
-  projectId: string; // Keep for legacy/mock compatibility
-  entryId: string;   // Keep for legacy/mock compatibility
-  date: string;      // Keep for legacy/mock compatibility
+  // projectId, entryId, date REMOVED
   createdAt: string;
   status: 'planning' | 'processing' | 'completed' | 'failed';
-  baseText: string;
-  changeRequest?: string;
-  uploadPrompt?: string;
-  assets: Asset[];
-  render_metadata?: {
-    thought_signature?: string;
-    signatures?: Record<string, string>;
-    model?: string;
-  };
+
+  // Content
+  prompt_snapshot?: string; // JSON string
+  blueprint?: any;
+
+  // Meta
+  edit_reason?: string; // previously changeRequest
+  render_metadata?: any;
+
+  // Output
+  assets: Asset[]; // Keeping Asset[] for UI compatibility, assuming backend returns compatible objects or we map them
 };
 
 export interface BlueprintOverrides {
@@ -511,7 +519,8 @@ async function simulateGeneration(versionId: string, entryId: string, projectId:
   // Re-generate assets to simulate "result"
   const mockEntry: EntryLike = {
     id: entryId,
-    date: v.date,
+    // Fix: use current date as fallback since date is removed from AssetVersion
+    date: new Date().toISOString().split('T')[0],
     channel: "Instagram",
     type: "Post",
     title: "Mock Generated Asset"
@@ -519,7 +528,7 @@ async function simulateGeneration(versionId: string, entryId: string, projectId:
 
   const assets = generateAssetsMock({
     entry: mockEntry,
-    baseText: v.baseText,
+    baseText: v.prompt_snapshot || "Mock Brief",
   });
 
   versions[idx] = {
@@ -552,12 +561,12 @@ export async function generateAsset(
 
   const v: AssetVersion = {
     id: nanoid(10),
-    projectId: pid,
-    entryId: assetId,
-    date: new Date().toISOString(),
+    // projectId: pid, // REMOVED
+    // entryId: assetId, // REMOVED
+    // date: ... // REMOVED
     createdAt: new Date().toISOString(),
     status: 'processing',
-    baseText: request.context?.baseText || "Mock Brief",
+    prompt_snapshot: request.context?.baseText || "Mock Brief",
     assets: [],
   };
 
@@ -603,13 +612,10 @@ export async function editAsset(
 
   const v: AssetVersion = {
     id: nanoid(10),
-    projectId: pid,
-    entryId: assetId,
-    date: new Date().toISOString(),
     createdAt: new Date().toISOString(),
     status: 'processing',
-    baseText: source?.baseText || "Edited Brief",
-    changeRequest: request.prompt,
+    prompt_snapshot: source?.prompt_snapshot || "Edited Brief",
+    edit_reason: request.prompt,
     assets: [],
   };
 
@@ -672,13 +678,15 @@ export async function generateAssetVersion(input: {
 
   if (IS_REMOTE) {
     return http<AssetVersion>(
-      `/projects/${input.projectId}/entries/${input.entry.id}/asset-versions`,
+      // Updated URL to match potential new REST structure or at least prefix
+      `/api/projects/${input.projectId}/entries/${input.entry.id}/asset-versions`,
       {
         method: "POST",
         body: JSON.stringify({
-          date: input.entry.date,
-          baseText,
-          changeRequest: input.changeRequest,
+          // Map legacy/frontend fields to new DB schema fields
+          date: input.entry.date, // might be ignored by backend
+          prompt_snapshot: baseText,
+          edit_reason: input.changeRequest,
           uploadPrompt: input.uploadPrompt,
           imageOverrideUrl: input.imageOverrideUrl,
         }),
@@ -692,14 +700,11 @@ export async function generateAssetVersion(input: {
 
   const v: AssetVersion = {
     id: nanoid(10),
-    projectId: input.projectId,
-    entryId: input.entry.id,
-    date: input.entry.date,
     createdAt: new Date().toISOString(),
     status: 'completed',
-    baseText,
-    changeRequest: input.changeRequest,
-    uploadPrompt: input.uploadPrompt,
+    prompt_snapshot: baseText,
+    edit_reason: input.changeRequest,
+    // uploadPrompt: input.uploadPrompt, // Removed from schema, maybe mapped to edit_reason or blueprint? Ignoring for mock
     assets: generateAssetsMock({
       entry: input.entry,
       baseText,

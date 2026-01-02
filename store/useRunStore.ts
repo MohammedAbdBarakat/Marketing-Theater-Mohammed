@@ -62,16 +62,22 @@ export const useRunStore = create<RunState>()((set, get) => ({
   setCurrentPhase: (p) => set({ currentPhase: p }),
   pushLog: (log) =>
     set((st) => {
-      const existing = st.theater[log.phase as 1|2|3|4|5] || [];
+      const existing = st.theater[log.phase as 1 | 2 | 3 | 4 | 5] || [];
+      // Dedup: check if same log exists (by text & speaker)
+      const isDuplicate = existing.some(
+        (l) => l.text === log.text && l.speaker === log.speaker && l.phase === log.phase
+      );
+      if (isDuplicate) return st;
+
       const max = 50;
       const next = [...existing, log].slice(-max);
-      return { theater: { ...st.theater, [log.phase as 1|2|3|4|5]: next } };
+      return { theater: { ...st.theater, [log.phase as 1 | 2 | 3 | 4 | 5]: next } };
     }),
   setResult: (result) =>
     set((st) => ({ results: { ...st.results, [result.phase]: result } })),
   setSelectedStrategy: (id) => set({ selectedStrategyId: id }),
   addCalendarEntries: (date, entries) =>
-    set((st) => ({ calendar: { ...st.calendar, [date]: [ ...(st.calendar[date] || []), ...entries ] } })),
+    set((st) => ({ calendar: { ...st.calendar, [date]: [...(st.calendar[date] || []), ...entries] } })),
   setCalendar: (calendar) => set({ calendar }),
   reset: () =>
     set({

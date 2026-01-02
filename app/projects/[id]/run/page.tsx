@@ -174,10 +174,24 @@ export default function RunPage() {
 
         // 3. LISTEN (Pure Listener)
         const { connectStream } = await import("../../../../lib/sseClient");
+
+        // Track authoritative status to prevent stale events
+        let authoritativeStatus = "unknown";
+
         eventSource = connectStream(
           activeRunId,
           {
             onEvent: async (ev: any) => {
+              // 1. Handle Status Update (Priority Override)
+              if (ev.type === "status_update") {
+                authoritativeStatus = ev.status;
+                // If we are NOT waiting for selection, ensure panel is hidden
+                if (ev.status !== "waiting_for_selection") {
+                  setStrategyPrompt(null);
+                }
+                return;
+              }
+
               switch (ev.type) {
                 case "phase_start":
                   run.setCurrentPhase(ev.phase as 1 | 2 | 3 | 4);
@@ -189,11 +203,13 @@ export default function RunPage() {
                 case "phase_result":
                   run.setResult({ phase: ev.phase, summary: ev.summary, artifacts: ev.artifacts, candidates: ev.candidates });
                   run.setPhaseStatus(ev.phase as 1 | 2 | 3 | 4, "done");
-                  // Do NOT auto-advance purely on phase result if we need selection.
-                  // But phase 1/2 auto advance. Phase 3 needs selection.
                   if (ev.phase < 3) run.setCurrentPhase((ev.phase + 1) as any);
                   break;
                 case "strategy_candidates":
+                  // Suppress stale events on replay if we know we are done
+                  if (authoritativeStatus === "completed" || authoritativeStatus === "running_phase_4") {
+                    return;
+                  }
                   setStrategyPrompt({ items: ev.items, recommendedId: ev.recommendedId });
                   break;
                 case "calendar_day":
@@ -211,14 +227,11 @@ export default function RunPage() {
                   break;
 
                 case "error":
-                  // run.setStatus("error"); // Optional: don't kill UI on transient error
-                  // setConn("closed");
                   break;
               }
             },
             onError: (msg) => {
               console.log("SSE Retry/Error:", msg);
-              // EventSource auto-retries usually.
             }
           }
         );
@@ -274,23 +287,23 @@ export default function RunPage() {
       )}
 
       {run.status === "done" && (
-        <div className="rounded bg-green-50 border border-green-200 p-4 flex items-center justify-between">
-          <div className="text-green-800 text-sm">
-            <strong>Run completed.</strong> Open the Calendar to view details and generate assets.
+        <div className="flex items-center justify-between mt-8 border-t pt-4">
+          <div className="text-gray-600 text-sm">
+            Result: Calendar generated.
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-3 items-center">
             <button
               onClick={handleRegenerate}
               disabled={isResetting}
-              className="text-xs px-3 py-2 rounded border border-red-200 text-red-700 hover:bg-red-50 disabled:opacity-50"
+              className="text-xs px-3 py-2 text-gray-500 hover:text-gray-800 disabled:opacity-50"
             >
-              {isResetting ? "Resetting..." : "♻️ Regenerate Plan"}
+              {isResetting ? "Resetting..." : "Regenerate Plan"}
             </button>
 
             <Link
               href={`/projects/${id}/calendar`}
-              className="text-xs px-3 py-2 rounded bg-green-700 text-white hover:bg-green-800"
+              className="text-sm px-4 py-2 rounded bg-black text-white hover:bg-gray-800"
             >
               Go to Calendar →
             </Link>

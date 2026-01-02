@@ -541,7 +541,7 @@ export async function getProjects(): Promise<ProjectMeta[]> {
 
 export async function resetPhase4(runId: string): Promise<void> {
   if (IS_REMOTE) {
-    await http(`/runs/${runId}/reset-phase-4`, { method: "DELETE" });
+    await http(`/runs/${runId}/reset-phase-4`, { method: "POST" });
     return;
   }
   // Mock mode fallback (optional)

@@ -74,28 +74,194 @@ export type RunSnapshot = {
   calendar: Record<string, CalendarEntry[]>; // date -> entries
 };
 
-export type Asset =
-  | { id: string; kind: "image"; url: string; alt?: string }
-  | { id: string; kind: "carousel"; items: { url: string; alt?: string }[] }
-  | { id: string; kind: "video"; title: string; script: string; thumbnailUrl?: string }
-  | { id: string; kind: "text"; title: string; text: string };
+
+export type AssetMediaItem = {
+  type: "image" | "video";
+  url: string;
+  slide_num?: number;
+  thumbnail?: string;
+};
 
 export type AssetVersion = {
-  id: string;
-  projectId: string;
-  entryId: string;
-  date: string;
+  id: string; // "ver_xyz"
+  status: "planning" | "processing" | "completed" | "failed";
   createdAt: string;
-  baseText: string;
-  changeRequest?: string;
-  uploadPrompt?: string;
-  assets: Asset[];
+
+  // The Plan
+  blueprint?: Record<string, unknown>;
+  prompt_snapshot?: string;
+
+  // The Output
+  assets: AssetMediaItem[]; // Can be 1 item (Image) or 5 items (Carousel)
+
+  // Metadata
+  edit_reason?: string; // "Initial Plan" or "User Edit: Make it blue"
 };
+
+// ... (keep Mock storage keys)
+const LS_ASSET_VERSIONS = "sim:assetVersions";
+
+// ... (keep read/write helpers)
+
+// --- Studio Endpoints ---
+
+export async function getAssetHistory(assetId: string): Promise<AssetVersion[]> {
+  if (IS_REMOTE) {
+    return http<AssetVersion[]>(`/api/assets/${assetId}/versions`);
+  }
+  const store = read<Record<string, AssetVersion[]>>(LS_ASSET_VERSIONS, {});
+  // For mock: assetId is treated as entryId for simplicity in migration
+  return (store[assetId] || []).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}
+
+export async function startGeneration(assetId: string): Promise<{ versionId: string; statusUrl: string }> {
+  if (IS_REMOTE) {
+    return http<{ versionId: string; statusUrl: string }>(`/api/assets/${assetId}/generate`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+  }
+
+  // Mock Logic
+  const versionId = `ver_${nanoid(6)}`;
+  const v: AssetVersion = {
+    id: versionId,
+    status: "processing",
+    createdAt: new Date().toISOString(),
+    assets: [],
+    edit_reason: "Initial Draft",
+  };
+
+  const store = read<Record<string, AssetVersion[]>>(LS_ASSET_VERSIONS, {});
+  store[assetId] = [...(store[assetId] || []), v];
+  write(LS_ASSET_VERSIONS, store);
+
+  // Simulate async processing
+  setTimeout(() => {
+    const updatedStore = read<Record<string, AssetVersion[]>>(LS_ASSET_VERSIONS, {});
+    const target = updatedStore[assetId]?.find(x => x.id === versionId);
+    if (target) {
+      target.status = "completed";
+      // Generate mock assets
+      const seed = Math.random();
+      const type = seed > 0.7 ? "video" : seed > 0.4 ? "carousel" : "image";
+
+      if (type === "image") {
+        target.assets = [{ type: "image", url: `https://picsum.photos/seed/${versionId}/1080/1080` }];
+      } else if (type === "carousel") {
+        target.assets = Array.from({ length: 4 }).map((_, i) => ({
+          type: "image",
+          url: `https://picsum.photos/seed/${versionId}-${i}/1080/1080`,
+          slide_num: i + 1
+        }));
+      } else {
+        target.assets = [{
+          type: "video",
+          url: "", // No actual video for mock
+          thumbnail: `https://picsum.photos/seed/${versionId}-thumb/1080/1920`
+        }];
+      }
+      write(LS_ASSET_VERSIONS, updatedStore);
+    }
+  }, 4000);
+
+  return { versionId, statusUrl: `/assets/versions/${versionId}` };
+}
+
+export async function submitEdit(
+  assetId: string,
+  payload: { sourceVersionId: string; prompt: string; slideNum?: number }
+): Promise<{ newVersionId: string; statusUrl: string }> {
+  if (IS_REMOTE) {
+    return http<{ newVersionId: string; statusUrl: string }>(`/api/assets/${assetId}/edit`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  // Mock Logic
+  const newVersionId = `ver_${nanoid(6)}`;
+  const store = read<Record<string, AssetVersion[]>>(LS_ASSET_VERSIONS, {});
+  const source = store[assetId]?.find(x => x.id === payload.sourceVersionId);
+
+  const v: AssetVersion = {
+    id: newVersionId,
+    status: "processing",
+    createdAt: new Date().toISOString(),
+    assets: [], // Start empty
+    edit_reason: `User Edit: ${payload.prompt}`,
+    blueprint: source?.blueprint // Copy context
+  };
+
+  store[assetId] = [...(store[assetId] || []), v];
+  write(LS_ASSET_VERSIONS, store);
+
+  setTimeout(() => {
+    const updatedStore = read<Record<string, AssetVersion[]>>(LS_ASSET_VERSIONS, {});
+    const target = updatedStore[assetId]?.find(x => x.id === newVersionId);
+    const original = updatedStore[assetId]?.find(x => x.id === payload.sourceVersionId);
+
+    if (target && original) {
+      target.status = "completed";
+      // Copy assets from source and modify one if slideNum is present, or replace all if not
+      if (payload.slideNum !== undefined) {
+        target.assets = original.assets.map(a =>
+          a.slide_num === payload.slideNum
+            ? { ...a, url: `https://picsum.photos/seed/${newVersionId}/1080/1080` } // "Redraw"
+            : a
+        );
+      } else {
+        // Global edit
+        target.assets = original.assets.map((a, i) => ({
+          ...a,
+          url: `https://picsum.photos/seed/${newVersionId}-${i}/1080/1080`
+        }));
+      }
+      write(LS_ASSET_VERSIONS, updatedStore);
+    }
+  }, 4000);
+
+  return { newVersionId, statusUrl: `/assets/versions/${newVersionId}` };
+}
+
+export async function pollAssetVersion(versionId: string): Promise<AssetVersion | null> {
+  // In real remote, we might fetch /assets/versions/:id
+  // But our manual said GET /api/assets/versions/{version_id}
+  if (IS_REMOTE) {
+    return http<AssetVersion>(`/api/assets/versions/${versionId}`);
+  }
+
+  // Mock: search all stores (inefficient but works for mock)
+  const store = read<Record<string, AssetVersion[]>>(LS_ASSET_VERSIONS, {});
+  for (const list of Object.values(store)) {
+    const found = list.find(v => v.id === versionId);
+    if (found) return found;
+  }
+  return null;
+}
+
+// ... (Simulate deprecating old functions or redirecting them if needed, but keeping them for now to avoid breaking other imports until full migration)
+// Legacy types might break, so I will comment out or adapt the OLD AssetVersion if it conflicts. 
+// Actually, I am replacing the types, so old code using AssetVersion will break. 
+// I must migrate old functions to return new types or update them.
+// The old functions: getAssetVersions, generateAssetVersion etc.
+// The manual implies "Studio Mode" replaces inline. 
+// I will keep old functions for reference but they might need type adjustments to compile.
+// Let's redefine old AssetVersion as LegacyAssetVersion if needed, or just let them break and I fix the page next.
+// Wait, I am replacing "AssetVersion" and "Asset" types. 
+// So `generateAssetVersion` signature in `lib/api.ts` will break.
+// I should update old functions to return/work with NEW types if possible, OR just deprecate them.
+// Since I am rewriting the CalendarDayPage to use Studio, the old functions might not be used there anymore.
+// But valid TS is needed.
+// I will comment out or update the old functions to essentially be stubs or simple adapters if possible.
+// Or just remove them if I am confident.
+// I'll comment out the old "Phase 5 (Assets)" section.
+
 
 // Simple localStorage-backed simulation
 const LS_PROJECTS = "sim:projects";
 const LS_RUNS = "sim:runs";
-const LS_ASSET_VERSIONS = "sim:assetVersions";
+
 
 function read<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -112,124 +278,11 @@ function write<T>(key: string, value: T) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
-type EntryLike = Pick<CalendarEntry, "id" | "date" | "channel" | "type" | "title">;
 
-function versionKey(projectId: string, entryId: string) {
-  return `${projectId}:${entryId}`;
-}
 
-function defaultBaseTextForEntry(entry: EntryLike) {
-  return [
-    `Create assets for this calendar entry:`,
-    `- Date: ${entry.date}`,
-    `- Channel: ${entry.channel}`,
-    `- Type: ${entry.type}`,
-    `- Title: ${entry.title}`,
-    ``,
-    `Write in brand voice and include a clear CTA.`,
-  ].join("\n");
-}
+// [LEGACY HELPERS REMOVED]
+// Inline mock generation helpers...
 
-function svgPlaceholder(params: { title: string; subtitle: string; bg: string }) {
-  const esc = (s: string) =>
-    s
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#039;");
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630">
-  <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="${params.bg}"/>
-      <stop offset="1" stop-color="#111827"/>
-    </linearGradient>
-  </defs>
-  <rect width="100%" height="100%" fill="url(#g)"/>
-  <text x="70" y="240" font-size="64" font-family="Arial, sans-serif" fill="#fff" font-weight="700">${esc(params.title)}</text>
-  <text x="70" y="320" font-size="32" font-family="Arial, sans-serif" fill="#e5e7eb">${esc(params.subtitle)}</text>
-  <text x="70" y="560" font-size="24" font-family="Arial, sans-serif" fill="#9ca3af">Marketing Theater — Demo Asset</text>
-</svg>`;
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-}
-
-function seedFromString(s: string) {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return h;
-}
-
-function generateAssetsMock(params: {
-  entry: EntryLike;
-  baseText: string;
-  imageOverrideUrl?: string;
-}) {
-  const { entry, baseText, imageOverrideUrl } = params;
-  const seed = seedFromString(`${entry.id}:${baseText}`);
-  const palette = ["#0ea5e9", "#10b981", "#8b5cf6", "#ef4444", "#f59e0b"];
-  const bg1 = palette[seed % palette.length];
-  const bg2 = palette[(seed + 2) % palette.length];
-  const bg3 = palette[(seed + 4) % palette.length];
-
-  const caption = `“${entry.title}” — ${entry.channel} ${entry.type}. ${baseText
-    .split("\n")
-    .slice(-1)[0]
-    ?.trim() || "Tap to learn more."}`;
-  const videoScript = [
-    `Hook: ${entry.title} (5s)`,
-    `Problem: show the pain (8s)`,
-    `Solution: show the product (10s)`,
-    `Proof: quick testimonial/stat (6s)`,
-    `CTA: try it today (4s)`,
-  ].join("\n");
-
-  const imageUrl =
-    imageOverrideUrl ||
-    svgPlaceholder({
-      title: entry.title,
-      subtitle: `${entry.channel} • ${entry.type}`,
-      bg: bg1,
-    });
-  const carouselItems = [
-    svgPlaceholder({
-      title: entry.title,
-      subtitle: "Slide 1 — Hook",
-      bg: bg1,
-    }),
-    svgPlaceholder({
-      title: entry.title,
-      subtitle: "Slide 2 — Proof",
-      bg: bg2,
-    }),
-    svgPlaceholder({
-      title: entry.title,
-      subtitle: "Slide 3 — CTA",
-      bg: bg3,
-    }),
-  ];
-
-  const assets: Asset[] = [
-    { id: nanoid(8), kind: "text", title: "Caption", text: caption },
-    { id: nanoid(8), kind: "image", url: imageUrl, alt: entry.title },
-    {
-      id: nanoid(8),
-      kind: "carousel",
-      items: carouselItems.map((url, i) => ({ url, alt: `${entry.title} — Slide ${i + 1}` })),
-    },
-    {
-      id: nanoid(8),
-      kind: "video",
-      title: "Video Concept",
-      script: videoScript,
-      thumbnailUrl: svgPlaceholder({
-        title: entry.title,
-        subtitle: "Video thumbnail (demo)",
-        bg: bg2,
-      }),
-    },
-  ];
-  return assets;
-}
 
 export async function createProject(input: {
   name: string;
@@ -437,85 +490,10 @@ export async function extractBusinessDNA(input: {
   );
 }
 
-export async function getAssetVersions(
-  projectId: string,
-  entryId: string
-): Promise<AssetVersion[]> {
-  if (IS_REMOTE) {
-    return http<AssetVersion[]>(
-      `/projects/${projectId}/entries/${entryId}/asset-versions`
-    );
-  }
-  const store = read<Record<string, AssetVersion[]>>(LS_ASSET_VERSIONS, {});
-  return store[versionKey(projectId, entryId)] || [];
-}
+// [LEGACY / REMOVED]
+// Inline generation logic replaced by Studio Mode.
+// Former functions: getAssetVersions, generateAssetVersion, ensureDemoAssetVersion
 
-export async function generateAssetVersion(input: {
-  projectId: string;
-  entry: EntryLike;
-  baseText?: string;
-  changeRequest?: string;
-  uploadPrompt?: string;
-  imageOverrideUrl?: string;
-}): Promise<AssetVersion> {
-  const baseText = (input.baseText || "").trim() || defaultBaseTextForEntry(input.entry);
-
-  if (IS_REMOTE) {
-    return http<AssetVersion>(
-      `/projects/${input.projectId}/entries/${input.entry.id}/asset-versions`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          date: input.entry.date,
-          baseText,
-          changeRequest: input.changeRequest,
-          uploadPrompt: input.uploadPrompt,
-          imageOverrideUrl: input.imageOverrideUrl,
-        }),
-      }
-    );
-  }
-
-  const store = read<Record<string, AssetVersion[]>>(LS_ASSET_VERSIONS, {});
-  const key = versionKey(input.projectId, input.entry.id);
-  const versions = store[key] || [];
-
-  const v: AssetVersion = {
-    id: nanoid(10),
-    projectId: input.projectId,
-    entryId: input.entry.id,
-    date: input.entry.date,
-    createdAt: new Date().toISOString(),
-    baseText,
-    changeRequest: input.changeRequest,
-    uploadPrompt: input.uploadPrompt,
-    assets: generateAssetsMock({
-      entry: input.entry,
-      baseText,
-      imageOverrideUrl: input.imageOverrideUrl,
-    }),
-  };
-
-  store[key] = [...versions, v];
-  write(LS_ASSET_VERSIONS, store);
-  return new Promise((res) => setTimeout(() => res(v), 250));
-}
-
-export async function ensureDemoAssetVersion(input: {
-  projectId: string;
-  entry: EntryLike;
-}): Promise<AssetVersion[]> {
-  if (IS_REMOTE) return [];
-  const existing = await getAssetVersions(input.projectId, input.entry.id);
-  if (existing.length) return existing;
-  const v = await generateAssetVersion({
-    projectId: input.projectId,
-    entry: input.entry,
-    baseText: defaultBaseTextForEntry(input.entry),
-    changeRequest: "Initial demo generation",
-  });
-  return [v];
-}
 
 export async function ensureDemoProjects(): Promise<void> {
   if (IS_REMOTE) return;

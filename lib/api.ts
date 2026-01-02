@@ -289,6 +289,16 @@ export async function updateProject(
   write(LS_PROJECTS, projects);
 }
 
+export async function startRun(runId: string): Promise<{ message: string; status: string }> {
+  if (IS_REMOTE) {
+    return http<{ message: string; status: string }>(`/runs/${runId}/start`, {
+      method: "POST",
+    });
+  }
+  // Mock mode: auto-success
+  return { message: "Run started (mock)", status: "started" };
+}
+
 export async function createRun(input: {
   projectId: string;
   snapshot?: { brand?: BrandInputs; strategy?: StrategyInputs };
@@ -566,7 +576,7 @@ export async function deleteProject(id: string): Promise<void> {
     await http(`/projects/${id}`, { method: "DELETE" });
     return;
   }
-  
+
   // Mock Mode: Delete from Local Storage
   const projects = read<Record<string, ProjectMeta>>(LS_PROJECTS, {});
   if (projects[id]) {

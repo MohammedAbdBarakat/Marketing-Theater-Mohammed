@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import dayjs from "dayjs";
 import { useProjectStore } from "../../../../store/useProjectStore";
 import { useRunStore } from "../../../../store/useRunStore";
 
@@ -9,7 +8,7 @@ import { PhaseStepper } from "../../../../components/run/PhaseStepper";
 import { MeetingTheater } from "../../../../components/run/MeetingTheater";
 import { PhaseResultCard } from "../../../../components/run/PhaseResultCard";
 import { StrategySelectModal } from "../../../../components/run/StrategySelectModal";
-import { selectStrategy, getLatestRunForProject, resetPhase4 } from "../../../../lib/api";
+import { selectStrategy, getLatestRunForProject, resetPhase4, startRun, stopRun, RunStatus } from "../../../../lib/api";
 import { ConnectionStatus } from "../../../../components/run/ConnectionStatus";
 import Link from "next/link";
 
@@ -20,37 +19,26 @@ export default function RunPage() {
   const [conn, setConn] = useState<"connecting" | "open" | "closed">("connecting");
   const [strategyPrompt, setStrategyPrompt] = useState<{ items: any[]; recommendedId?: string } | null>(null);
   const [isResetting, setIsResetting] = useState(false);
+  const [isToggling, setIsToggling] = useState(false);
 
-  const duration = useMemo(() => ({ start: project.duration.start, end: project.duration.end }), [project.duration]);
-
-
+  // ... (refreshRunDataFromDB kept as is, but fix setStatus)
   const refreshRunDataFromDB = async (runId: string) => {
     try {
-      console.log("🔄 Syncing with Database to get Real UUIDs...");
+      console.log("🔄 Syncing with Database...");
       const latest = await getLatestRunForProject(id);
 
       if (latest && latest.runId === runId) {
-        // 1. تحديث الرزنامة بالبيانات التي تحتوي على Real IDs
-        if (latest.calendar) {
-          run.setCalendar(latest.calendar as any);
-          console.log("✅ Calendar synced with DB (Real IDs loaded).");
-        }
-
-        // 2. تحديث نتائج المراحل لضمان تطابق الحالة
+        if (latest.calendar) run.setCalendar(latest.calendar as any);
         if (latest.results) {
           Object.entries(latest.results).forEach(([phaseStr, data]: [string, any]) => {
             const p = parseInt(phaseStr) as 1 | 2 | 3 | 4;
             if ([1, 2, 3, 4].includes(p)) {
-              run.setResult({
-                phase: p,
-                summary: data.summary,
-                artifacts: data.artifacts,
-                candidates: data.candidates
-              });
+              run.setResult({ phase: p, summary: data.summary, artifacts: data.artifacts, candidates: data.candidates });
               run.setPhaseStatus(p, "done");
             }
           });
         }
+        if (latest.status) run.setStatus(latest.status as RunStatus);
       }
     } catch (e) {
       console.error("❌ Failed to sync run data:", e);
@@ -64,11 +52,7 @@ export default function RunPage() {
 
     setIsResetting(true);
     try {
-      // A. Call the DELETE endpoint
       await resetPhase4(run.runId);
-
-      // B. Reload the page to restart the SSE Stream
-      // The backend will see Phase 4 is missing and start generating it again.
       window.location.reload();
     } catch (err) {
       alert("Failed to reset run. Check console.");
@@ -76,6 +60,28 @@ export default function RunPage() {
       setIsResetting(false);
     }
   }
+
+  // Unified Start/Stop/Resume Handlers
+  const handleStart = async () => {
+    if (!run.runId) return;
+    setIsToggling(true);
+    try {
+      // If stopped or created, start/resume
+      await startRun(run.runId);
+      run.setStatus("active");
+    } catch (e) { console.error(e); }
+    setIsToggling(false);
+  };
+
+  const handleStop = async () => {
+    if (!run.runId) return;
+    setIsToggling(true);
+    try {
+      await stopRun(run.runId);
+      run.setStatus("stopped_by_user");
+    } catch (e) { console.error(e); }
+    setIsToggling(false);
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -85,16 +91,16 @@ export default function RunPage() {
       try {
         let activeRunId = run.runId;
 
-        // 1. Initial Fetch (Get ID + Hydrate State)
+        // 1. Initial Fetch
         if (!activeRunId) {
           const latest = await getLatestRunForProject(id);
           if (latest && mounted) {
             activeRunId = latest.runId;
             run.setRunId(latest.runId);
             if (latest.selectedStrategyId) run.setSelectedStrategy(latest.selectedStrategyId);
-
-            // Hydrate immediately so user sees data while connecting
             if (latest.calendar) run.setCalendar(latest.calendar as any);
+            if (latest.status) run.setStatus(latest.status as RunStatus);
+
             if (latest.results) {
               Object.entries(latest.results).forEach(([phaseStr, data]: [string, any]) => {
                 const p = parseInt(phaseStr) as 1 | 2 | 3 | 4;
@@ -108,84 +114,32 @@ export default function RunPage() {
           }
         }
 
-        if (!activeRunId && mounted) {
-          // Create new run if none exists (or could be error state)
-          // For now, assume a run is created via "Start" on project page or similar.
-          // If we are here, we might need to create one, OR start a new one.
-          // Requirement says: "Call this immediately when the user creates a new run or clicks Retry/Generate"
-          // If we are just landing here, we assume a run exists or we start one.
-          // Let's assume we try to get latest, if not, we start a new run?
-          // Actually, the new backend flow says: POST /runs/{id}/start
-          // If we don't have an ID, we can't start.
-          // So we probably need to create a run first if it doesn't exist?
-          // The previous code `activeRunId = "local"` suggests we mock it.
-          // Let's stick to valid ID.
-          return;
-        }
-
+        if (!activeRunId && mounted) return;
         if (!mounted || !activeRunId) return;
 
-        // 2. EXPLICIT START (Idempotent)
-        // We only call start if we are "starting" the run. 
-        // If we are just refreshing, we skip start?
-        // User guideline: "Also connect to this on page load (if the user refreshes), so they rejoin the session."
-        // "If the user refreshes the page: Do NOT call /start."
-        // How do we know if it's a refresh vs new?
-        // Maybe we just don't call start here? Start should be called by the action that triggers the run.
-        // BUT the prompt says: "Frontend Logic: Call this immediately when the user creates a new run or clicks Retry/Generate."
-        // If we are deep linking, we just connect?
-        // Let's try to ONLY connect here. The "Create Run" button elsewhere should have called start?
-        // OR: we check if the run is "new" status?
-        // Actually, the prompt example `startAndWatchRun` implies we call start then watch.
-        // For now, let's implement the CONNECT part here. The "Start" might need to happen elsewhere or we check status.
-        // Wait, current page load MIGHT be the "Start" action if redirected from creation?
-        // Let's call start anyway? 
-        // Prompt says: "If it returns 200 with status: 'running', that's fine too (idempotent)."
-        // So we CAN call it safely? 
-        // "If the user refreshes the page: Do NOT call /start."
-        // This is conflicting. Idempotent means safe to call, but "Do NOT call" implies maybe side effects or just unnecessary.
-        // Let's assume we can call it if we are unsure, OR safely skip if we know it's running.
-        // The implementation plan says: "On Mount: Check if run is already started... Call api.startRun(runId) if this is a fresh start/retry."
-        // Let's be safe and call it ONLY if we don't have results yet?
-        // Or better: let's make a explicit "Start" button if inactive?
-        // No, the user wants auto-start.
-        // Let's call startRun safely. If it's running, it's fine.
-
-        // Wait, for REFRESH, we don't want to restart Phase 1 if we are in Phase 3.
-        // The backend `start` might reset?
-        // "If it returns 200 with status: 'running', that's fine too" -> implies it WON'T reset.
-        // So it IS safe.
-        // We will call startRun here to be sure, unless we want to rely on the previous page action.
-        // Actually, `activeRunId` comes from URL or DB.
-
-        setConn("connecting");
-
-        // Only call start if we suspect it's not running? 
-        // Let's Try calling startRun. If it fails or says running, we continue.
-        try {
-          const { startRun } = await import("../../../../lib/api"); // dynamic import to avoid circ dep if any
-          await startRun(activeRunId);
-        } catch (e) {
-          console.warn("Start run warning:", e);
+        // 2. EXPLICIT START (Only if not already running or completed)
+        // Check local status or rely on backend idempotent start
+        if (run.status === "created") {
+          try {
+            const { startRun } = await import("../../../../lib/api");
+            await startRun(activeRunId);
+            run.setStatus("active");
+          } catch (e) { console.warn("Start run warning:", e); }
         }
 
-        run.setStatus("running");
         setConn("open");
 
-        // 3. LISTEN (Pure Listener)
+        // 3. LISTEN
         const { connectStream } = await import("../../../../lib/sseClient");
-
-        // Track authoritative status to prevent stale events
         let authoritativeStatus = "unknown";
 
         eventSource = connectStream(
           activeRunId,
           {
             onEvent: async (ev: any) => {
-              // 1. Handle Status Update (Priority Override)
               if (ev.type === "status_update") {
                 authoritativeStatus = ev.status;
-                // If we are NOT waiting for selection, ensure panel is hidden
+                run.setStatus(ev.status as RunStatus);
                 if (ev.status !== "waiting_for_selection") {
                   setStrategyPrompt(null);
                 }
@@ -206,10 +160,7 @@ export default function RunPage() {
                   if (ev.phase < 3) run.setCurrentPhase((ev.phase + 1) as any);
                   break;
                 case "strategy_candidates":
-                  // Suppress stale events on replay if we know we are done
-                  if (authoritativeStatus === "completed" || authoritativeStatus === "running_phase_4") {
-                    return;
-                  }
+                  if (authoritativeStatus === "completed") return; // Stale check
                   setStrategyPrompt({ items: ev.items, recommendedId: ev.recommendedId });
                   break;
                 case "calendar_day":
@@ -217,27 +168,24 @@ export default function RunPage() {
                   run.setCurrentPhase(4);
                   run.addCalendarEntries(ev.date, ev.entries);
                   break;
-
                 case "done":
                   run.setPhaseStatus(4, "done");
                   run.setCurrentPhase(5);
-                  run.setStatus("done");
+                  run.setStatus("completed"); // Fixed mapping
                   setConn("closed");
                   await refreshRunDataFromDB(activeRunId!);
                   break;
-
                 case "error":
+                  run.setStatus("failed"); // Fixed mapping
                   break;
               }
             },
-            onError: (msg) => {
-              console.log("SSE Retry/Error:", msg);
-            }
+            onError: (msg) => { console.log("SSE Retry/Error:", msg); }
           }
         );
 
       } catch (err) {
-        if (mounted) { setConn("closed"); run.setStatus("error"); }
+        if (mounted) { setConn("closed"); run.setStatus("failed"); } // Fixed mapping
       }
     }
 
@@ -258,14 +206,60 @@ export default function RunPage() {
   }
 
   const currentLogs = run.theater[run.currentPhase as 1 | 2 | 3 | 4 | 5] || [];
+  const status = run.status;
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between bg-white p-4 rounded-lg shadow-sm border border-gray-200">
         <PhaseStepper phases={run.phases} current={run.currentPhase || 1} />
-        <ConnectionStatus status={conn} />
+
+        {/* Unified Control Bar */}
+        <div className="flex items-center gap-4">
+          <ConnectionStatus status={conn} />
+
+          {/* Status Badge */}
+          <div className={`text-xs px-2 py-1 rounded font-mono uppercase ${status === 'active' ? 'bg-green-100 text-green-800' :
+            status === 'completed' ? 'bg-blue-100 text-blue-800' :
+              status === 'failed' ? 'bg-red-100 text-red-800' :
+                status === 'stopped_by_user' ? 'bg-yellow-100 text-yellow-800' :
+                  'bg-gray-100 text-gray-800'
+            }`}>
+            {status || 'UNKNOWN'}
+          </div>
+
+          {/* Action Buttons */}
+          {status === 'active' && (
+            <button
+              onClick={handleStop} disabled={isToggling}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-white bg-red-600 rounded hover:bg-red-700 disabled:opacity-50"
+            >
+              {isToggling ? '...' : 'Stop'}
+            </button>
+          )}
+
+          {(status === 'stopped_by_user' || status === 'client_disconnected') && (
+            <button
+              onClick={handleStart} disabled={isToggling}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-white bg-green-600 rounded hover:bg-green-700 disabled:opacity-50"
+            >
+              {isToggling ? '...' : 'Resume'}
+            </button>
+          )}
+
+          {(status === 'created' || status === undefined) && (
+            <button
+              onClick={handleStart} disabled={isToggling}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-white bg-black rounded hover:bg-gray-800 disabled:opacity-50"
+            >
+              {isToggling ? 'Starting...' : 'Start Run'}
+            </button>
+          )}
+          {/* Retry Logic for failed state if needed */}
+        </div>
       </div>
+
       <MeetingTheater logs={currentLogs} />
+
       <div className="grid gap-4 md:grid-cols-3">
         {[1, 2, 3].map((p) => {
           const res = run.results[p as 1 | 2 | 3 | 4];
@@ -286,7 +280,7 @@ export default function RunPage() {
         />
       )}
 
-      {run.status === "done" && (
+      {run.status === "completed" && (
         <div className="flex items-center justify-between mt-8 border-t pt-4">
           <div className="text-gray-600 text-sm">
             Result: Calendar generated.

@@ -12,9 +12,12 @@ export function VersionTimeline({ versions, selectedVersionId, onSelectVersion }
         <div className="flex flex-col gap-2 overflow-y-auto max-h-[300px]">
             {versions.map((v, i) => {
                 const isSelected = v.id === selectedVersionId;
+                // SAFE KEY: Use ID if exists, fallback to index
+                const safeKey = v.id || `temp-${i}`; 
+                
                 return (
                     <button
-                        key={v.id}
+                        key={safeKey} 
                         onClick={() => onSelectVersion(v)}
                         className={`text-left p-3 rounded border text-sm transition-colors ${isSelected ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50 border-gray-200'}`}
                     >

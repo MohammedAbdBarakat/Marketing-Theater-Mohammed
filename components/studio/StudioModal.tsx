@@ -81,6 +81,7 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
     const [versions, setVersions] = useState<AssetVersion[]>([]);
     const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
     const [isPolling, setIsPolling] = useState(false);
+    const [isLoadingHistory, setIsLoadingHistory] = useState(true); // New state for initial load
     const [error, setError] = useState<string | null>(null);
 
     // Carousel State
@@ -92,12 +93,15 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
     // 1. Init: Load History
     useEffect(() => {
         let mounted = true;
+        setIsLoadingHistory(true);
         getAssetHistory(assetId).then(list => {
             if (!mounted) return;
             setVersions(list);
             if (list.length > 0) setSelectedVersionId(list[0].id);
         }).catch(err => {
             console.error("Failed to load history:", err);
+        }).finally(() => {
+            if (mounted) setIsLoadingHistory(false);
         });
         return () => { mounted = false; };
     }, [assetId]);
@@ -107,6 +111,7 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
         if (!activeVersion || activeVersion.status === "completed" || activeVersion.status === "failed") return;
 
         let mounted = true;
+        setIsLoadingHistory(false); // Ensure loading is off if we are polling
         setIsPolling(true);
         const interval = setInterval(async () => {
             const updated = await pollAssetVersion(activeVersion.id);
@@ -115,7 +120,7 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
                 setVersions(prev => prev.map(v => v.id === updated.id ? updated : v));
                 setIsPolling(false);
             }
-        }, 3000);
+        }, 7000); // Increased from 3000 to 7000
 
         return () => { clearInterval(interval); mounted = false; };
     }, [activeVersion?.id, activeVersion?.status]);
@@ -194,7 +199,9 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
                     {/* Version Timeline at bottom of Left Col */}
                     <div className="mt-6 pt-6 border-t border-gray-200">
                         <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Version History</label>
-                        {versions.length === 0 ? (
+                        {isLoadingHistory ? (
+                            <div className="text-sm text-gray-500 animate-pulse">Loading history...</div>
+                        ) : versions.length === 0 ? (
                             <div className="text-sm text-gray-500 italic">No versions yet. Start generating.</div>
                         ) : (
                             <VersionTimeline versions={versions} selectedVersionId={selectedVersionId} onSelectVersion={v => setSelectedVersionId(v.id)} />

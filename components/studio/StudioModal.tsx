@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { AssetVersion, getAssetHistory, pollAssetVersion, planAsset, updateBlueprint, executeGeneration, submitEdit } from "../../lib/api";
+import { AssetVersion, getAssetHistory, pollAssetVersion, previewPlan, generateAsset, createFreshVersion } from "../../lib/api";
 import { AssetPreview } from "./AssetPreview";
 import { VersionTimeline } from "./VersionTimeline";
-import { EditControls } from "./EditControls";
+import { PromptBar } from "./PromptBar";
 
 interface StudioModalProps {
     assetId: string; // Mapping to CalendarEntry ID for now
@@ -13,20 +13,21 @@ interface StudioModalProps {
 }
 
 // Helper to extract user-friendly message from API error
+// Helper to extract user-friendly message from API error
 function parseErrorMessage(err: any): string {
-    const raw = err.message || toString();
-    // Look for JSON payload in the error string: HTTP 400 ...: {"detail": "..."}
-    const match = raw.match(/HTTP \d{3} .*?: (\{.*\})/);
-    if (match && match[1]) {
-        try {
-            const json = JSON.parse(match[1]);
-            if (json.detail) return json.detail;
-            if (json.message) return json.message;
-        } catch {
-            // ignore parse error
-        }
+    if (typeof err === "string") return err;
+    if (err?.detail) return err.detail;
+    if (err?.message) return err.message;
+
+    // Fallback: try to stringify if it's an object (like the Pydantic error array)
+    try {
+        const str = JSON.stringify(err);
+        if (str !== "{}") return str;
+    } catch {
+        // ignore
     }
-    return raw; // Fallback to raw string
+
+    return "An unknown error occurred";
 }
 
 function BlueprintDisplay({ data }: { data: any }) {
@@ -51,7 +52,7 @@ function BlueprintDisplay({ data }: { data: any }) {
                 <div>
                     <div className="text-xs font-semibold text-gray-600 mb-1">Composition Notes</div>
                     <div className="p-3 bg-blue-50 text-blue-900 rounded border border-blue-100 text-sm whitespace-pre-wrap">
-                        {notes}
+                        {typeof notes === 'object' ? JSON.stringify(notes, null, 2) : notes}
                     </div>
                 </div>
             )}
@@ -81,8 +82,13 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
     const [versions, setVersions] = useState<AssetVersion[]>([]);
     const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
     const [isPolling, setIsPolling] = useState(false);
-    const [isLoadingHistory, setIsLoadingHistory] = useState(true); // New state for initial load
+    const [isLoadingHistory, setIsLoadingHistory] = useState(true);
     const [error, setError] = useState<string | null>(null);
+
+    // Chatbot Workflow State
+    const [prompt, setPrompt] = useState("");
+    const [isPlanning, setIsPlanning] = useState(false);
+    const [isGenerating, setIsGenerating] = useState(false);
 
     // Carousel State
     const [slideNum, setSlideNum] = useState(1);
@@ -116,8 +122,22 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
         document.body.style.userSelect = '';
     };
 
-    const activeVersion = versions.find(v => v.id === selectedVersionId) || versions[0];
-    const isProcessing = activeVersion?.status === "processing" || activeVersion?.status === "planning" || isPolling;
+    const activeVersion = versions.find(v => v.id === selectedVersionId); // Null if draft mode
+    // const isProcessing = activeVersion?.status === "processing" || activeVersion?.status === "planning" || isPolling; 
+
+    // Sync Prompt with Selection
+    useEffect(() => {
+        if (activeVersion) {
+            setPrompt(activeVersion.final_used_prompt || (activeVersion.blueprint?.image_prompt as string) || "");
+        } else {
+            // Draft mode: Keep existing prompt if user was typing? Or clear? 
+            // "State A: The 'New Version' View (Zero State)... Input: Empty text box."
+            // But if I clicked "New Version", I want empty.
+            // If I just opened the modal and there are no versions, empty.
+            // If I manually deselected...
+            // Let's rely on the explicit "New Version" action to clear it.
+        }
+    }, [activeVersion?.id]);
 
     // 1. Init: Load History
     useEffect(() => {
@@ -126,7 +146,11 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
         getAssetHistory(assetId).then(list => {
             if (!mounted) return;
             setVersions(list);
-            if (list.length > 0) setSelectedVersionId(list[0].id);
+            if (list.length > 0) {
+                setSelectedVersionId(list[0].id);
+            } else {
+                setSelectedVersionId(null); // Explicit draft mode
+            }
         }).catch(err => {
             console.error("Failed to load history:", err);
         }).finally(() => {
@@ -137,68 +161,71 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
 
     // 2. Poll Active Version if Processing
     useEffect(() => {
-        if (!activeVersion || activeVersion.status === "completed" || activeVersion.status === "failed") return;
+        if (!activeVersion || (activeVersion.status === "completed" || activeVersion.status === "failed")) return;
 
         let mounted = true;
-        setIsLoadingHistory(false); // Ensure loading is off if we are polling
+        // setIsLoadingHistory(false); // Don't toggle full loading for polling
         setIsPolling(true);
         const interval = setInterval(async () => {
-            const updated = await pollAssetVersion(activeVersion.id);
-            if (!mounted) return;
-            if (updated && (updated.status === "completed" || updated.status === "failed" || updated.status === "ready_to_render")) {
-                setVersions(prev => prev.map(v => v.id === updated.id ? updated : v));
-                setIsPolling(false);
+            // If local status is processing but we lost track, we poll.
+            try {
+                const updated = await pollAssetVersion(activeVersion.id);
+                if (!mounted) return;
+                if (updated && (updated.status === "completed" || updated.status === "failed")) {
+                    setVersions(prev => prev.map(v => v.id === updated.id ? updated : v));
+                    setIsPolling(false);
+                }
+            } catch (pollErr) {
+                console.warn("Polling failed temporarily:", pollErr);
             }
-        }, 7000); // Increased from 3000 to 7000
+        }, 3000);
 
         return () => { clearInterval(interval); mounted = false; };
     }, [activeVersion?.id, activeVersion?.status]);
 
 
     // Actions
-    // Actions
+    const handlePlan = async () => {
+        setIsPlanning(true);
+        setError(null);
+        try {
+            const data = await previewPlan(assetId);
+            let text = data.resolved_prompt;
+
+            // Fallback: If no single prompt, try to construct from blueprint slides
+            if (!text && data.blueprint?.slides && Array.isArray(data.blueprint.slides)) {
+                text = data.blueprint.slides
+                    .map((s: any) => `[Slide ${s.slide_num}] ${s.image_prompt}`)
+                    .join("\n\n");
+            }
+
+            setPrompt(text || "");
+        } catch (err: any) {
+            setError(parseErrorMessage(err));
+        } finally {
+            setIsPlanning(false);
+        }
+    };
+
     const handleGenerate = async () => {
         setError(null);
+        setIsGenerating(true);
         try {
-            // New Plan-First Workflow
-            const { versionId } = await planAsset(assetId);
+            const { versionId } = await generateAsset(assetId, prompt);
             const list = await getAssetHistory(assetId);
             setVersions(list);
-            setSelectedVersionId(versionId);
+            setSelectedVersionId(versionId); // Switches to view the new version
         } catch (err: any) {
             setError(parseErrorMessage(err));
+        } finally {
+            setIsGenerating(false);
         }
     };
 
-    const handleExecute = async () => {
-        if (!activeVersion) return;
+    const handleNewVersion = () => {
+        setSelectedVersionId(null);
+        setPrompt("");
         setError(null);
-        try {
-            await executeGeneration(assetId, activeVersion.id);
-            // Manually set status to processing locally to trigger polling
-            setVersions(prev => prev.map(v => v.id === activeVersion.id ? { ...v, status: 'processing' } : v));
-        } catch (err: any) {
-            setError(parseErrorMessage(err));
-        }
-    };
-
-    const handleUpdate = async (prompt: string) => {
-        if (!activeVersion) return;
-        setError(null);
-        try {
-            // If carousel, send slide num
-            const isCarousel = activeVersion.assets.length > 1;
-            const { newVersionId } = await submitEdit(assetId, {
-                sourceVersionId: activeVersion.id,
-                prompt,
-                slideNum: isCarousel ? slideNum : undefined
-            });
-            const list = await getAssetHistory(assetId);
-            setVersions(list);
-            setSelectedVersionId(newVersionId);
-        } catch (err: any) {
-            setError(parseErrorMessage(err));
-        }
     };
 
 
@@ -276,7 +303,15 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
 
                     {/* Version Timeline at bottom of Left Col */}
                     <div className="mt-6 pt-6 border-t border-gray-200">
-                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Version History</label>
+                        <div className="flex items-center justify-between mb-2">
+                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide block">Version History</label>
+                            <button
+                                onClick={handleNewVersion}
+                                className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-1 rounded font-medium transition-colors"
+                            >
+                                + New Version
+                            </button>
+                        </div>
                         {isLoadingHistory ? (
                             <div className="text-sm text-gray-500 animate-pulse">Loading history...</div>
                         ) : versions.length === 0 ? (
@@ -318,38 +353,19 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
                     )}
 
                     <div className="flex-1 min-h-0 mb-4 bg-gray-100 rounded-lg border border-gray-200 p-4 relative overflow-y-auto">
-                        {versions.length === 0 ? (
-                            <div className="h-full flex flex-col items-center justify-center text-center">
-                                <div className="text-gray-400 mb-4">Ready to create assets?</div>
-                                <button
-                                    onClick={handleGenerate}
-                                    className="bg-black text-white px-6 py-3 rounded-lg font-semibold hover:scale-105 transition-transform"
-                                >
-                                    Plan Asset
-                                </button>
-                            </div>
-                        ) : activeVersion.status === "ready_to_render" ? (
-                            <div className="h-full flex flex-col items-center justify-center p-8 text-center max-w-md mx-auto">
-                                <h3 className="text-xl font-bold mb-4">Blueprint Ready</h3>
-                                <div className="bg-white p-4 rounded border border-gray-200 w-full text-left mb-6 shadow-sm">
-                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">AI Plan</label>
-                                    <textarea
-                                        className="w-full text-sm text-gray-800 border-none resize-none focus:ring-0 bg-transparent p-0"
-                                        rows={4}
-                                        defaultValue={String(activeVersion.blueprint?.image_prompt || "")}
-                                        placeholder="Enter image prompt..."
-                                        onBlur={(e) => updateBlueprint(activeVersion.id, { image_prompt: e.target.value })}
-                                    />
-                                </div>
-                                <button
-                                    onClick={handleExecute}
-                                    className="bg-blue-600 text-white px-8 py-3 rounded-lg font-bold hover:bg-blue-700 hover:scale-105 transition-all shadow-lg"
-                                >
-                                    Generate Final Asset
-                                </button>
-                                <p className="text-xs text-gray-400 mt-4">
-                                    Review the plan above. Click generate to maximize credits.
+                        {!activeVersion ? (
+                            <div className="h-full flex flex-col items-center justify-center text-center p-8">
+                                <div className="bg-white p-4 rounded-full mb-4 shadow-sm text-4xl">✨</div>
+                                <h3 className="text-lg font-semibold text-gray-900 mb-2">Start a New Creation</h3>
+                                <p className="text-gray-500 text-sm max-w-sm">
+                                    Describe what you want to see, or click the <strong>Plan</strong> button to let AI suggest a direction based on your strategy.
                                 </p>
+                            </div>
+                        ) : activeVersion.status === "processing" || activeVersion.status === "created" ? (
+                            <div className="h-full flex flex-col items-center justify-center p-8 text-center">
+                                <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mb-4" />
+                                <h3 className="text-lg font-medium text-gray-900">Creating your asset...</h3>
+                                <p className="text-sm text-gray-500 mt-2">This usually takes about 20-30 seconds.</p>
                             </div>
                         ) : (
                             <AssetPreview
@@ -360,21 +376,15 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
                         )}
                     </div>
 
-                    {/* Edit Controls - Only show for completed or processing, not planning status? 
-                        Actually, manual said "Edit Plan" is optional. For now, hiding EditControls in ready_to_render to keep it simple as per design.
-                    */}
-                    {versions.length > 0 && activeVersion.status !== "ready_to_render" && (
-                        <div className="pt-4 border-t border-gray-100">
-                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">
-                                Refine {activeVersion.assets.length > 1 ? `Slide ${slideNum}` : "Asset"}
-                            </label>
-                            <EditControls
-                                onUpdate={handleUpdate}
-                                isProcessing={isProcessing}
-                                placeholder={activeVersion.assets.length > 1 ? `Changes apply to Slide ${slideNum} (e.g. 'Add text overlay')` : undefined}
-                            />
-                        </div>
-                    )}
+                    <PromptBar
+                        prompt={prompt}
+                        onChange={setPrompt}
+                        onPlan={handlePlan}
+                        onGenerate={handleGenerate}
+                        isPlanning={isPlanning}
+                        isGenerating={isGenerating || (activeVersion?.status === "processing")}
+                        disabled={isPolling}
+                    />
                 </div>
 
             </div>

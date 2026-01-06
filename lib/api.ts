@@ -84,12 +84,13 @@ export type AssetMediaItem = {
 
 export type AssetVersion = {
   id: string; // "ver_xyz"
-  status: "planning" | "ready_to_render" | "processing" | "completed" | "failed";
+  status: "created" | "planning" | "ready_to_render" | "processing" | "completed" | "failed";
   createdAt: string;
 
   // The Plan
   blueprint?: Record<string, unknown>;
   prompt_snapshot?: string;
+  final_used_prompt?: string; // Stored prompt that generated this version
 
   // The Output
   assets: AssetMediaItem[]; // Can be 1 item (Image) or 5 items (Carousel)
@@ -114,11 +115,26 @@ export async function getAssetHistory(assetId: string): Promise<AssetVersion[]> 
   return (store[assetId] || []).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
-export async function startGeneration(assetId: string): Promise<{ versionId: string; statusUrl: string }> {
+export async function previewPlan(assetId: string): Promise<{ resolved_prompt: string; blueprint?: any }> {
   if (IS_REMOTE) {
-    return http<{ versionId: string; statusUrl: string }>(`/api/assets/${assetId}/generate`, {
+    return http<{ resolved_prompt: string; blueprint?: any }>(`/api/assets/${assetId}/plan-preview`, {
       method: "POST",
-      body: JSON.stringify({}),
+    });
+  }
+
+  // Mock Logic
+  return new Promise(resolve => setTimeout(() => {
+    resolve({
+      resolved_prompt: "A cinematic shot of a futuristic coffee shop with neon signs, 8k resolution, photorealistic."
+    });
+  }, 1000));
+}
+
+export async function generateAsset(assetId: string, finalPrompt: string): Promise<{ versionId: string }> {
+  if (IS_REMOTE) {
+    return http<{ versionId: string }>(`/api/assets/${assetId}/generate`, {
+      method: "POST",
+      body: JSON.stringify({ final_prompt: finalPrompt }),
     });
   }
 
@@ -129,43 +145,64 @@ export async function startGeneration(assetId: string): Promise<{ versionId: str
     status: "processing",
     createdAt: new Date().toISOString(),
     assets: [],
-    edit_reason: "Initial Draft",
+    edit_reason: "Generated from Prompt",
+    final_used_prompt: finalPrompt,
+    blueprint: { image_prompt: finalPrompt }
   };
 
   const store = read<Record<string, AssetVersion[]>>(LS_ASSET_VERSIONS, {});
   store[assetId] = [...(store[assetId] || []), v];
   write(LS_ASSET_VERSIONS, store);
 
-  // Simulate async processing
+  // Simulate completion
   setTimeout(() => {
     const updatedStore = read<Record<string, AssetVersion[]>>(LS_ASSET_VERSIONS, {});
-    const target = updatedStore[assetId]?.find(x => x.id === versionId);
-    if (target) {
-      target.status = "completed";
-      // Generate mock assets
+    const t = updatedStore[assetId]?.find(x => x.id === versionId);
+    if (t) {
+      t.status = "completed";
       const seed = Math.random();
-      const type = seed > 0.7 ? "video" : seed > 0.4 ? "carousel" : "image";
-
-      if (type === "image") {
-        target.assets = [{ type: "image", url: `https://picsum.photos/seed/${versionId}/1080/1080` }];
-      } else if (type === "carousel") {
-        target.assets = Array.from({ length: 4 }).map((_, i) => ({
+      if (seed > 0.5) {
+        t.assets = [{ type: "image", url: `https://picsum.photos/seed/${versionId}/1080/1080` }];
+      } else {
+        t.assets = Array.from({ length: 4 }).map((_, i) => ({
           type: "image",
           url: `https://picsum.photos/seed/${versionId}-${i}/1080/1080`,
           slide_num: i + 1
         }));
-      } else {
-        target.assets = [{
-          type: "video",
-          url: "", // No actual video for mock
-          thumbnail: `https://picsum.photos/seed/${versionId}-thumb/1080/1920`
-        }];
       }
       write(LS_ASSET_VERSIONS, updatedStore);
     }
-  }, 4000);
+  }, 5000);
 
-  return { versionId, statusUrl: `/assets/versions/${versionId}` };
+  return { versionId };
+}
+
+export async function createFreshVersion(assetId: string): Promise<{ versionId: string; status: string; blueprint: any }> {
+  if (IS_REMOTE) {
+    return http<{ versionId: string; status: string; blueprint: any }>(`/api/assets/${assetId}/versions`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+  }
+
+  // Mock Logic
+  const versionId = `ver_${nanoid(6)}`;
+  const v: AssetVersion = {
+    id: versionId,
+    status: "created",
+    createdAt: new Date().toISOString(),
+    assets: [],
+    edit_reason: "Fresh Start",
+    blueprint: {
+      image_prompt: "", // Empty start
+    }
+  };
+
+  const store = read<Record<string, AssetVersion[]>>(LS_ASSET_VERSIONS, {});
+  store[assetId] = [...(store[assetId] || []), v];
+  write(LS_ASSET_VERSIONS, store);
+
+  return { versionId, status: "created", blueprint: v.blueprint };
 }
 
 export async function planAsset(assetId: string, overrides: { image_prompt?: string } = {}): Promise<{ versionId: string; status: string; blueprint: any }> {

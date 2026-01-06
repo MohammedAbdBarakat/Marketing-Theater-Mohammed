@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { AssetVersion, getAssetHistory, pollAssetVersion, previewPlan, generateAsset, createFreshVersion } from "../../lib/api";
+import { AssetVersion, getAssetHistory, pollAssetVersion, previewPlan, generateAsset, createFreshVersion, resumeGeneration } from "../../lib/api";
 import { AssetPreview } from "./AssetPreview";
 import { VersionTimeline } from "./VersionTimeline";
 import { PromptBar } from "./PromptBar";
@@ -92,6 +92,10 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
 
     // Carousel State
     const [slideNum, setSlideNum] = useState(1);
+    const [targetSlideCount, setTargetSlideCount] = useState(5); // Default 5
+    const [stepByStep, setStepByStep] = useState(true); // Default enabled for carousels
+
+    const isCarousel = initialContext.type.toLowerCase().includes("carousel");
 
     // 5. Layout State (Resizable)
     const [leftWidth, setLeftWidth] = useState(33.33); // Percentage
@@ -161,7 +165,7 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
 
     // 2. Poll Active Version if Processing
     useEffect(() => {
-        if (!activeVersion || (activeVersion.status === "completed" || activeVersion.status === "failed")) return;
+        if (!activeVersion || (activeVersion.status === "completed" || activeVersion.status === "failed" || activeVersion.status === "waiting_for_approval")) return;
 
         let mounted = true;
         // setIsLoadingHistory(false); // Don't toggle full loading for polling
@@ -171,7 +175,7 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
             try {
                 const updated = await pollAssetVersion(activeVersion.id);
                 if (!mounted) return;
-                if (updated && (updated.status === "completed" || updated.status === "failed")) {
+                if (updated && (updated.status === "completed" || updated.status === "failed" || updated.status === "waiting_for_approval")) {
                     setVersions(prev => prev.map(v => v.id === updated.id ? updated : v));
                     setIsPolling(false);
                 }
@@ -189,7 +193,7 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
         setIsPlanning(true);
         setError(null);
         try {
-            const data = await previewPlan(assetId);
+            const data = await previewPlan(assetId, isCarousel ? targetSlideCount : undefined);
             let text = data.resolved_prompt;
 
             // Fallback: If no single prompt, try to construct from blueprint slides
@@ -211,13 +215,27 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
         setError(null);
         setIsGenerating(true);
         try {
-            const { versionId } = await generateAsset(assetId, prompt);
+            const { versionId } = await generateAsset(assetId, prompt, isCarousel ? stepByStep : false);
             const list = await getAssetHistory(assetId);
             setVersions(list);
             setSelectedVersionId(versionId); // Switches to view the new version
         } catch (err: any) {
             setError(parseErrorMessage(err));
         } finally {
+            setIsGenerating(false);
+        }
+    };
+
+    const handleResume = async () => {
+        if (!activeVersion) return;
+        setError(null);
+        setIsGenerating(true); // Reuse generating state for resume spinner
+        try {
+            await resumeGeneration(activeVersion.id);
+            // Trigger polling manually
+            setVersions(prev => prev.map(v => v.id === activeVersion.id ? { ...v, status: 'processing' } : v));
+        } catch (err: any) {
+            setError(parseErrorMessage(err));
             setIsGenerating(false);
         }
     };
@@ -357,6 +375,38 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
                             <div className="h-full flex flex-col items-center justify-center text-center p-8">
                                 <div className="bg-white p-4 rounded-full mb-4 shadow-sm text-4xl">✨</div>
                                 <h3 className="text-lg font-semibold text-gray-900 mb-2">Start a New Creation</h3>
+
+                                {isCarousel && (
+                                    <div className="flex gap-4 mb-6 mt-2">
+                                        <div className="flex flex-col items-start bg-white border border-gray-200 p-3 rounded-lg shadow-sm">
+                                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Slides</label>
+                                            <div className="flex gap-2">
+                                                {[3, 4, 5].map(n => (
+                                                    <button
+                                                        key={n}
+                                                        onClick={() => setTargetSlideCount(n)}
+                                                        className={`px-3 py-1 text-sm font-medium rounded ${targetSlideCount === n ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                                                    >
+                                                        {n}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-col items-start bg-white border border-gray-200 p-3 rounded-lg shadow-sm">
+                                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Mode</label>
+                                            <label className="flex items-center gap-2 cursor-pointer mt-1">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={stepByStep}
+                                                    onChange={e => setStepByStep(e.target.checked)}
+                                                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                                                />
+                                                <span className="text-sm text-gray-700">Step-by-Step Approval</span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                )}
+
                                 <p className="text-gray-500 text-sm max-w-sm">
                                     Describe what you want to see, or click the <strong>Plan</strong> button to let AI suggest a direction based on your strategy.
                                 </p>
@@ -366,6 +416,29 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
                                 <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mb-4" />
                                 <h3 className="text-lg font-medium text-gray-900">Creating your asset...</h3>
                                 <p className="text-sm text-gray-500 mt-2">This usually takes about 20-30 seconds.</p>
+                            </div>
+                        ) : activeVersion.status === "waiting_for_approval" ? (
+                            <div className="h-full flex flex-col">
+                                <div className="flex-1 overflow-hidden relative">
+                                    <AssetPreview
+                                        assets={activeVersion.assets}
+                                        selectedSlideInfo={activeVersion.assets.length > 1 ? { num: slideNum, total: activeVersion.assets.length } : undefined}
+                                        onSelectSlide={setSlideNum}
+                                    />
+                                </div>
+                                <div className="p-4 bg-yellow-50 border-t border-yellow-100 flex items-center justify-between">
+                                    <div>
+                                        <div className="font-bold text-yellow-800">Review Slide {activeVersion.assets.length}</div>
+                                        <div className="text-xs text-yellow-700">Approve this slide to generate the next one.</div>
+                                    </div>
+                                    <button
+                                        onClick={handleResume}
+                                        disabled={isGenerating}
+                                        className="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-6 rounded shadow-sm flex items-center gap-2"
+                                    >
+                                        {isGenerating ? "Generating..." : "Next Slide →"}
+                                    </button>
+                                </div>
                             </div>
                         ) : (
                             <AssetPreview

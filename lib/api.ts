@@ -84,7 +84,7 @@ export type AssetMediaItem = {
 
 export type AssetVersion = {
   id: string; // "ver_xyz"
-  status: "created" | "planning" | "ready_to_render" | "processing" | "completed" | "failed";
+  status: "created" | "planning" | "ready_to_render" | "processing" | "completed" | "failed" | "waiting_for_approval";
   createdAt: string;
 
   // The Plan
@@ -115,10 +115,11 @@ export async function getAssetHistory(assetId: string): Promise<AssetVersion[]> 
   return (store[assetId] || []).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
-export async function previewPlan(assetId: string): Promise<{ resolved_prompt: string; blueprint?: any }> {
+export async function previewPlan(assetId: string, slideCount?: number): Promise<{ resolved_prompt: string; blueprint?: any }> {
   if (IS_REMOTE) {
     return http<{ resolved_prompt: string; blueprint?: any }>(`/api/assets/${assetId}/plan-preview`, {
       method: "POST",
+      body: JSON.stringify({ slide_count: slideCount })
     });
   }
 
@@ -130,11 +131,11 @@ export async function previewPlan(assetId: string): Promise<{ resolved_prompt: s
   }, 1000));
 }
 
-export async function generateAsset(assetId: string, finalPrompt: string): Promise<{ versionId: string }> {
+export async function generateAsset(assetId: string, finalPrompt: string, stepByStep: boolean = false): Promise<{ versionId: string }> {
   if (IS_REMOTE) {
     return http<{ versionId: string }>(`/api/assets/${assetId}/generate`, {
       method: "POST",
-      body: JSON.stringify({ final_prompt: finalPrompt }),
+      body: JSON.stringify({ final_prompt: finalPrompt, step_by_step: stepByStep }),
     });
   }
 
@@ -175,6 +176,47 @@ export async function generateAsset(assetId: string, finalPrompt: string): Promi
   }, 5000);
 
   return { versionId };
+}
+
+export async function resumeGeneration(versionId: string): Promise<void> {
+  if (IS_REMOTE) {
+    return http<void>(`/api/assets/versions/${versionId}/resume`, {
+      method: "POST",
+    });
+  }
+  // Mock Logic
+  const store = read<Record<string, AssetVersion[]>>(LS_ASSET_VERSIONS, {});
+  // Find version across all assets (inefficient mock but fine)
+  for (const assetId in store) {
+    const v = store[assetId].find(x => x.id === versionId);
+    if (v) {
+      v.status = "processing";
+      write(LS_ASSET_VERSIONS, store);
+      setTimeout(() => {
+        const refreshedStore = read<Record<string, AssetVersion[]>>(LS_ASSET_VERSIONS, {});
+        const refreshedV = refreshedStore[assetId].find(x => x.id === versionId);
+        if (refreshedV) {
+          // Logic to add next slide or finish
+          const currentCount = refreshedV.assets.length;
+          const nextSlideNum = currentCount + 1;
+          refreshedV.assets.push({
+            type: "image",
+            url: `https://picsum.photos/seed/${versionId}-${nextSlideNum}/1080/1080`,
+            slide_num: nextSlideNum
+          });
+
+          // Allow up to 5 slides
+          if (refreshedV.assets.length >= 5) {
+            refreshedV.status = "completed";
+          } else {
+            refreshedV.status = "waiting_for_approval";
+          }
+          write(LS_ASSET_VERSIONS, refreshedStore);
+        }
+      }, 2000);
+      break;
+    }
+  }
 }
 
 export async function createFreshVersion(assetId: string): Promise<{ versionId: string; status: string; blueprint: any }> {
@@ -656,6 +698,7 @@ export async function ensureDemoProjects(): Promise<void> {
       duration: { start, end },
       createdAt,
       updatedAt,
+      // brand/strategy omitted for brevity in demo
     };
   };
 

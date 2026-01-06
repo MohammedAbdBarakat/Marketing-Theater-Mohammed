@@ -53,7 +53,7 @@ export default function CalendarDayPage() {
           run.setCalendar(snap.calendar as unknown as Record<string, CalendarEntry[]>);
           run.setPhaseStatus(4, "done");
           run.setCurrentPhase(5);
-          run.setStatus("completed");
+          run.setStatus("done");
         }
         if (!mounted) return;
         setDayEntries(fromSnap);

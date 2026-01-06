@@ -5,8 +5,6 @@ import { http } from "./http";
 
 export type Duration = { start: string; end: string };
 
-export type RunStatus = "created" | "active" | "completed" | "failed" | "stopped_by_user" | "client_disconnected";
-
 export type ProjectMeta = {
   id: string;
   name: string;
@@ -71,7 +69,6 @@ export type RunSnapshot = {
   runId: string;
   projectId: string;
   createdAt: string;
-  status?: RunStatus;
   results: Record<string, PhaseResult>; // "1","2","3","4"
   selectedStrategyId?: string;
   calendar: Record<string, CalendarEntry[]>; // date -> entries
@@ -345,23 +342,14 @@ export async function updateProject(
   write(LS_PROJECTS, projects);
 }
 
-export async function startRun(runId: string): Promise<{ message: string; status: RunStatus }> {
+export async function startRun(runId: string): Promise<{ message: string; status: string }> {
   if (IS_REMOTE) {
-    return http<{ message: string; status: RunStatus }>(`/runs/${runId}/start`, {
+    return http<{ message: string; status: string }>(`/runs/${runId}/start`, {
       method: "POST",
     });
   }
   // Mock mode: auto-success
-  return { message: "Run started (mock)", status: "active" };
-}
-
-export async function stopRun(runId: string): Promise<{ message: string; status: RunStatus }> {
-  if (IS_REMOTE) {
-    return http<{ message: string; status: RunStatus }>(`/runs/${runId}/stop`, {
-      method: "POST"
-    });
-  }
-  return { message: "Run stopped (mock)", status: "stopped_by_user" };
+  return { message: "Run started (mock)", status: "started" };
 }
 
 export async function createRun(input: {

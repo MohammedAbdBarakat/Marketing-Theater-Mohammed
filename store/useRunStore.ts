@@ -1,12 +1,16 @@
 "use client";
 import { create } from "zustand";
-import type { RunStatus, PhaseResult } from "../lib/api";
 
 export type PhaseStatus = "idle" | "running" | "done" | "error";
 
 export type TheaterLog = { phase: number; speaker: string; text: string; ts: number };
 
-export type { PhaseResult };
+export type PhaseResult = {
+  phase: 1 | 2 | 3 | 4;
+  summary: string;
+  artifacts: any[];
+  candidates?: { id: string; name: string; rationale: string; highlights: string[] }[];
+};
 
 export type CalendarEntry = {
   id: string;
@@ -22,7 +26,7 @@ export type CalendarEntry = {
 
 export type RunState = {
   runId?: string;
-  status: RunStatus;
+  status: PhaseStatus;
   currentPhase: 1 | 2 | 3 | 4 | 5 | 0;
   phases: Record<1 | 2 | 3 | 4 | 5, PhaseStatus>;
   theater: Record<1 | 2 | 3 | 4 | 5, TheaterLog[]>;
@@ -31,7 +35,7 @@ export type RunState = {
   calendar: Record<string, CalendarEntry[]>; // ISO date -> entries
 
   setRunId: (id: string) => void;
-  setStatus: (s: RunStatus) => void;
+  setStatus: (s: PhaseStatus) => void;
   setPhaseStatus: (p: 1 | 2 | 3 | 4 | 5, s: PhaseStatus) => void;
   setCurrentPhase: (p: RunState["currentPhase"]) => void;
   pushLog: (log: TheaterLog) => void;
@@ -44,7 +48,7 @@ export type RunState = {
 
 export const useRunStore = create<RunState>()((set, get) => ({
   runId: undefined,
-  status: "created",
+  status: "idle",
   currentPhase: 0,
   phases: { 1: "idle", 2: "idle", 3: "idle", 4: "idle", 5: "idle" },
   theater: { 1: [], 2: [], 3: [], 4: [], 5: [] },
@@ -78,7 +82,7 @@ export const useRunStore = create<RunState>()((set, get) => ({
   reset: () =>
     set({
       runId: undefined,
-      status: "created",
+      status: "idle",
       currentPhase: 0,
       phases: { 1: "idle", 2: "idle", 3: "idle", 4: "idle", 5: "idle" },
       theater: { 1: [], 2: [], 3: [], 4: [], 5: [] },

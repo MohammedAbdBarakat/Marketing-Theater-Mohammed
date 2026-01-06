@@ -84,7 +84,7 @@ export type AssetMediaItem = {
 
 export type AssetVersion = {
   id: string; // "ver_xyz"
-  status: "planning" | "processing" | "completed" | "failed";
+  status: "planning" | "ready_to_render" | "processing" | "completed" | "failed";
   createdAt: string;
 
   // The Plan
@@ -166,6 +166,108 @@ export async function startGeneration(assetId: string): Promise<{ versionId: str
   }, 4000);
 
   return { versionId, statusUrl: `/assets/versions/${versionId}` };
+}
+
+export async function planAsset(assetId: string, overrides: { image_prompt?: string } = {}): Promise<{ versionId: string; status: string; blueprint: any }> {
+  if (IS_REMOTE) {
+    return http(`/api/assets/${assetId}/plan`, {
+      method: "POST",
+      body: JSON.stringify({ blueprint_overrides: overrides }),
+    });
+  }
+
+  // Mock Logic
+  const versionId = `ver_${nanoid(6)}`;
+  const v: AssetVersion = {
+    id: versionId,
+    status: "ready_to_render",
+    createdAt: new Date().toISOString(),
+    assets: [],
+    edit_reason: "Initial Plan",
+    blueprint: {
+      image_prompt: overrides.image_prompt || "A futuristic city with neons...",
+      composition_notes: "Focus on high contrast and vibrant colors."
+    }
+  };
+
+  const store = read<Record<string, AssetVersion[]>>(LS_ASSET_VERSIONS, {});
+  store[assetId] = [...(store[assetId] || []), v];
+  write(LS_ASSET_VERSIONS, store);
+
+  return { versionId, status: "ready_to_render", blueprint: v.blueprint };
+}
+
+export async function updateBlueprint(versionId: string, blueprint: any): Promise<void> {
+  if (IS_REMOTE) {
+    await http(`/api/assets/versions/${versionId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ blueprint }),
+    });
+    return;
+  }
+
+  // Mock Logic
+  const store = read<Record<string, AssetVersion[]>>(LS_ASSET_VERSIONS, {});
+  let found = false;
+  for (const list of Object.values(store)) {
+    const v = list.find(x => x.id === versionId);
+    if (v) {
+      v.blueprint = { ...v.blueprint, ...blueprint };
+      found = true;
+      break;
+    }
+  }
+  if (found) write(LS_ASSET_VERSIONS, store);
+}
+
+export async function executeGeneration(assetId: string, targetVersionId: string): Promise<void> {
+  if (IS_REMOTE) {
+    await http(`/api/assets/${assetId}/generate`, {
+      method: "POST",
+      body: JSON.stringify({ target_version_id: targetVersionId }),
+    });
+    return;
+  }
+
+  // Mock Logic
+  const store = read<Record<string, AssetVersion[]>>(LS_ASSET_VERSIONS, {});
+  const list = store[assetId] || [];
+  const target = list.find(x => x.id === targetVersionId);
+
+  if (target) {
+    target.status = "processing";
+    write(LS_ASSET_VERSIONS, store);
+
+    setTimeout(() => {
+      const updatedStore = read<Record<string, AssetVersion[]>>(LS_ASSET_VERSIONS, {});
+      const t = updatedStore[assetId]?.find(x => x.id === targetVersionId);
+      if (t) {
+        t.status = "completed";
+        // Generate mock assets based on plan
+        const seed = Math.random();
+        const type = seed > 0.7 ? "video" : seed > 0.4 ? "carousel" : "image";
+
+        if (type === "image") {
+          t.assets = [{ type: "image", url: `https://picsum.photos/seed/${targetVersionId}/1080/1080` }];
+        } else if (type === "carousel") {
+          t.assets = Array.from({ length: 4 }).map((_, i) => ({
+            type: "image",
+            url: `https://picsum.photos/seed/${targetVersionId}-${i}/1080/1080`,
+            slide_num: i + 1
+          }));
+        } else {
+          t.assets = [{
+            type: "video",
+            url: "", // No actual video for mock
+            thumbnail: `https://picsum.photos/seed/${targetVersionId}-thumb/1080/1920`
+          }];
+        }
+        write(LS_ASSET_VERSIONS, updatedStore);
+      }
+    }, 4000);
+  }
+
+
 }
 
 export async function submitEdit(

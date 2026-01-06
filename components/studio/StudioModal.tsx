@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { AssetVersion, getAssetHistory, pollAssetVersion, startGeneration, submitEdit } from "../../lib/api";
+import { AssetVersion, getAssetHistory, pollAssetVersion, planAsset, updateBlueprint, executeGeneration, submitEdit } from "../../lib/api";
 import { AssetPreview } from "./AssetPreview";
 import { VersionTimeline } from "./VersionTimeline";
 import { EditControls } from "./EditControls";
@@ -145,7 +145,7 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
         const interval = setInterval(async () => {
             const updated = await pollAssetVersion(activeVersion.id);
             if (!mounted) return;
-            if (updated && (updated.status === "completed" || updated.status === "failed")) {
+            if (updated && (updated.status === "completed" || updated.status === "failed" || updated.status === "ready_to_render")) {
                 setVersions(prev => prev.map(v => v.id === updated.id ? updated : v));
                 setIsPolling(false);
             }
@@ -156,13 +156,27 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
 
 
     // Actions
+    // Actions
     const handleGenerate = async () => {
         setError(null);
         try {
-            const { versionId } = await startGeneration(assetId);
+            // New Plan-First Workflow
+            const { versionId } = await planAsset(assetId);
             const list = await getAssetHistory(assetId);
             setVersions(list);
             setSelectedVersionId(versionId);
+        } catch (err: any) {
+            setError(parseErrorMessage(err));
+        }
+    };
+
+    const handleExecute = async () => {
+        if (!activeVersion) return;
+        setError(null);
+        try {
+            await executeGeneration(assetId, activeVersion.id);
+            // Manually set status to processing locally to trigger polling
+            setVersions(prev => prev.map(v => v.id === activeVersion.id ? { ...v, status: 'processing' } : v));
         } catch (err: any) {
             setError(parseErrorMessage(err));
         }
@@ -303,7 +317,7 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
                         </div>
                     )}
 
-                    <div className="flex-1 min-h-0 mb-4 bg-gray-100 rounded-lg border border-gray-200 p-4 relative">
+                    <div className="flex-1 min-h-0 mb-4 bg-gray-100 rounded-lg border border-gray-200 p-4 relative overflow-y-auto">
                         {versions.length === 0 ? (
                             <div className="h-full flex flex-col items-center justify-center text-center">
                                 <div className="text-gray-400 mb-4">Ready to create assets?</div>
@@ -311,8 +325,31 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
                                     onClick={handleGenerate}
                                     className="bg-black text-white px-6 py-3 rounded-lg font-semibold hover:scale-105 transition-transform"
                                 >
-                                    Generate Initial Draft
+                                    Plan Asset
                                 </button>
+                            </div>
+                        ) : activeVersion.status === "ready_to_render" ? (
+                            <div className="h-full flex flex-col items-center justify-center p-8 text-center max-w-md mx-auto">
+                                <h3 className="text-xl font-bold mb-4">Blueprint Ready</h3>
+                                <div className="bg-white p-4 rounded border border-gray-200 w-full text-left mb-6 shadow-sm">
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">AI Plan</label>
+                                    <textarea
+                                        className="w-full text-sm text-gray-800 border-none resize-none focus:ring-0 bg-transparent p-0"
+                                        rows={4}
+                                        defaultValue={String(activeVersion.blueprint?.image_prompt || "")}
+                                        placeholder="Enter image prompt..."
+                                        onBlur={(e) => updateBlueprint(activeVersion.id, { image_prompt: e.target.value })}
+                                    />
+                                </div>
+                                <button
+                                    onClick={handleExecute}
+                                    className="bg-blue-600 text-white px-8 py-3 rounded-lg font-bold hover:bg-blue-700 hover:scale-105 transition-all shadow-lg"
+                                >
+                                    Generate Final Asset
+                                </button>
+                                <p className="text-xs text-gray-400 mt-4">
+                                    Review the plan above. Click generate to maximize credits.
+                                </p>
                             </div>
                         ) : (
                             <AssetPreview
@@ -323,8 +360,10 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
                         )}
                     </div>
 
-                    {/* Edit Controls */}
-                    {versions.length > 0 && (
+                    {/* Edit Controls - Only show for completed or processing, not planning status? 
+                        Actually, manual said "Edit Plan" is optional. For now, hiding EditControls in ready_to_render to keep it simple as per design.
+                    */}
+                    {versions.length > 0 && activeVersion.status !== "ready_to_render" && (
                         <div className="pt-4 border-t border-gray-100">
                             <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">
                                 Refine {activeVersion.assets.length > 1 ? `Slide ${slideNum}` : "Asset"}

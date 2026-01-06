@@ -87,6 +87,35 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
     // Carousel State
     const [slideNum, setSlideNum] = useState(1);
 
+    // 5. Layout State (Resizable)
+    const [leftWidth, setLeftWidth] = useState(33.33); // Percentage
+    const containerRef = useRef<HTMLDivElement>(null);
+    const isDragging = useRef(false);
+
+    const handleMouseDown = (e: React.MouseEvent) => {
+        isDragging.current = true;
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+        document.body.style.userSelect = 'none'; // Prevent selection
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+        if (!isDragging.current || !containerRef.current) return;
+        const containerRect = containerRef.current.getBoundingClientRect();
+        const newLeftWidth = ((e.clientX - containerRect.left) / containerRect.width) * 100;
+        // Clamp between 20% and 80%
+        if (newLeftWidth > 20 && newLeftWidth < 80) {
+            setLeftWidth(newLeftWidth);
+        }
+    };
+
+    const handleMouseUp = () => {
+        isDragging.current = false;
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+        document.body.style.userSelect = '';
+    };
+
     const activeVersion = versions.find(v => v.id === selectedVersionId) || versions[0];
     const isProcessing = activeVersion?.status === "processing" || activeVersion?.status === "planning" || isPolling;
 
@@ -158,12 +187,31 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
         }
     };
 
+
+
+    // 4. Loading State
+    if (isLoadingHistory) {
+        return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+                <div className="bg-white p-4 rounded-full shadow-2xl animate-in fade-in zoom-in duration-200">
+                    <div className="animate-spin rounded-full h-8 w-8 border-4 border-gray-200 border-t-black" />
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="bg-white w-full max-w-6xl h-[85vh] rounded-xl shadow-2xl overflow-hidden flex flex-col md:flex-row">
+            <div
+                ref={containerRef}
+                className="bg-white w-full max-w-[90vw] h-[85vh] rounded-xl shadow-2xl overflow-hidden flex flex-col md:flex-row relative"
+            >
 
                 {/* Left Column: The Plan */}
-                <div className="w-full md:w-1/3 bg-gray-50 border-r border-gray-200 p-6 flex flex-col">
+                <div
+                    style={{ width: `${leftWidth}%` }}
+                    className="h-full bg-gray-50 border-r border-gray-200 p-6 flex flex-col flex-shrink-0"
+                >
                     <div className="flex items-center justify-between mb-6">
                         <h2 className="text-xl font-bold">The Plan</h2>
                         <button onClick={onClose} className="text-gray-500 hover:text-black">✕</button>
@@ -209,8 +257,21 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
                     </div>
                 </div>
 
+
+
+                {/* Drag Handle */}
+                <div
+                    className="w-1 hover:w-2 bg-transparent hover:bg-blue-400 cursor-col-resize z-10 -ml-0.5 transition-all flex items-center justify-center group"
+                    onMouseDown={handleMouseDown}
+                >
+                    <div className="h-8 w-1 bg-gray-300 rounded-full group-hover:bg-white" />
+                </div>
+
                 {/* Right Column: The Studio */}
-                <div className="w-full md:w-2/3 bg-white p-6 flex flex-col">
+                <div
+                    style={{ width: `${100 - leftWidth}%` }}
+                    className="h-full bg-white p-6 flex flex-col flex-shrink-0"
+                >
                     <div className="flex items-center justify-between mb-4">
                         <h2 className="text-xl font-bold">Asset Studio</h2>
                         {activeVersion?.status === "processing" && (
@@ -262,6 +323,6 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
                 </div>
 
             </div>
-        </div>
+        </div >
     );
 }

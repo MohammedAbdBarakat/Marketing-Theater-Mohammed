@@ -8,7 +8,7 @@ import { EditControls } from "./EditControls";
 
 interface StudioModalProps {
     assetId: string; // Mapping to CalendarEntry ID for now
-    initialContext: { title: string; channel: string; type: string; baseText: string };
+    initialContext: { title: string; channel: string; type: string; baseText: string; date?: string };
     onClose: () => void;
 }
 
@@ -218,23 +218,39 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
                     </div>
 
                     <div className="space-y-6 flex-1 overflow-y-auto pr-2">
-                        <div>
-                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Context</label>
-                            <div className="mt-1 text-sm font-medium">{initialContext.channel} • {initialContext.type}</div>
-                            <div className="text-lg font-semibold mt-1">{initialContext.title}</div>
-                        </div>
-
-                        <div>
-                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Strategy</label>
-                            <div className="mt-1 text-sm text-gray-700 bg-white p-3 rounded border">
-                                Using <strong>Confident</strong> tone. Visuals should align with branding guidelines.
+                        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
+                            <div className="bg-gray-100 px-4 py-3 border-b border-gray-200 flex justify-between items-center">
+                                <label className="text-xs font-bold text-gray-600 uppercase tracking-wide">Asset Info</label>
+                                {initialContext.date && <span className="text-xs font-mono text-gray-500">{initialContext.date}</span>}
                             </div>
-                        </div>
-
-                        <div>
-                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Hook & Caption</label>
-                            <div className="mt-1 p-3 bg-white rounded border text-sm text-gray-800 whitespace-pre-wrap">
-                                {initialContext.baseText}
+                            <div className="p-5 space-y-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <div className="text-[10px] uppercase text-gray-400 font-bold mb-1">Channel</div>
+                                        <div className="text-sm font-medium text-gray-900">{initialContext.channel}</div>
+                                    </div>
+                                    <div>
+                                        <div className="text-[10px] uppercase text-gray-400 font-bold mb-1">Type</div>
+                                        <div className="text-sm font-medium text-gray-900">{initialContext.type}</div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div className="text-[10px] uppercase text-gray-400 font-bold mb-1">Title</div>
+                                    <div className="text-sm font-semibold text-gray-900 leading-tight">{initialContext.title}</div>
+                                </div>
+                                <div className="pt-4 border-t border-gray-100">
+                                    <div className="text-[10px] uppercase text-gray-400 font-bold mb-2">Instructions</div>
+                                    <div className="text-xs text-gray-600 space-y-2">
+                                        <p className="flex items-start gap-2">
+                                            <span className="w-1 h-1 rounded-full bg-gray-400 mt-1.5" />
+                                            <span>Write in brand voice using <strong>Confident</strong> tone.</span>
+                                        </p>
+                                        <p className="flex items-start gap-2">
+                                            <span className="w-1 h-1 rounded-full bg-gray-400 mt-1.5" />
+                                            <span>Include a clear Call to Action.</span>
+                                        </p>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 

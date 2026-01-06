@@ -151,6 +151,7 @@ export default function CalendarDayPage() {
             title: selectedForStudio.title,
             channel: selectedForStudio.channel,
             type: selectedForStudio.type,
+            date: selectedForStudio.date, // Pass date explicitly
             baseText: defaultBaseText(selectedForStudio) // Or fetch real base text if stored
           }}
           onClose={() => setStudioOpen(false)}

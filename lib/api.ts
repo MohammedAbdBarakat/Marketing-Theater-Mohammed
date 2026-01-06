@@ -79,8 +79,7 @@ export type RunSnapshot = {
 
 
 export type AssetMediaItem = {
-  type?: "image" | "video"; // Make optional
-  kind?: "image" | "video"; // Add kind support
+  type: "image" | "video";
   url: string;
   slide_num?: number;
   thumbnail?: string;

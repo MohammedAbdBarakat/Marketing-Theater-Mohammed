@@ -106,29 +106,19 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
         return () => { mounted = false; };
     }, [assetId]);
 
-   // 2. Poll Active Version if Processing
+    // 2. Poll Active Version if Processing
     useEffect(() => {
-        // SAFETY CHECK: Do not poll if ID is missing or undefined
-        if (!activeVersion?.id || activeVersion.id === "undefined") return;
-        
-        if (activeVersion.status === "completed" || activeVersion.status === "failed") return;
+        if (!activeVersion || activeVersion.status === "completed" || activeVersion.status === "failed") return;
 
         let mounted = true;
         setIsLoadingHistory(false); // Ensure loading is off if we are polling
         setIsPolling(true);
         const interval = setInterval(async () => {
-            if (!activeVersion.id) return; // Double check inside loop
-            
-            try {
-                const updated = await pollAssetVersion(activeVersion.id);
-                if (!mounted) return;
-                
-                if (updated && (updated.status === "completed" || updated.status === "failed")) {
-                    setVersions(prev => prev.map(v => v.id === updated.id ? updated : v));
-                    setIsPolling(false);
-                }
-            } catch (e) {
-                console.log("Polling error (might be too early):", e);
+            const updated = await pollAssetVersion(activeVersion.id);
+            if (!mounted) return;
+            if (updated && (updated.status === "completed" || updated.status === "failed")) {
+                setVersions(prev => prev.map(v => v.id === updated.id ? updated : v));
+                setIsPolling(false);
             }
         }, 7000); // Increased from 3000 to 7000
 
@@ -138,34 +128,6 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
 
     // Actions
     const handleGenerate = async () => {
-        // 1. Start on Backend
-        const { versionId } = await startGeneration(assetId);
-        
-        // 2. Create Optimistic Version (The "Placeholder")
-        // We manually build what we expect the new version to look like
-        const optimisticVersion: AssetVersion = {
-            id: versionId,
-            status: "planning",
-            createdAt: new Date().toISOString(),
-            assets: [],
-            edit_reason: "Generation Triggered",
-            // Inherit blueprint from current active if available
-            blueprint: activeVersion?.blueprint
-        };
-
-        // 3. Force Update State IMMEDIATELY
-        // We add the new version to the top of the list so .find() works instantly
-        setVersions(prev => [optimisticVersion, ...prev]);
-        setSelectedVersionId(versionId);
-        
-        // 4. Background Refresh
-        // We still fetch the real list to be safe, but we don't block the UI switch
-        getAssetHistory(assetId).then(list => {
-            // Only update if we found the new ID, otherwise keep our optimistic one
-            if (list.find(v => v.id === versionId)) {
-                setVersions(list);
-            }
-        });
         setError(null);
         try {
             const { versionId } = await startGeneration(assetId);

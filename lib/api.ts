@@ -1,7 +1,8 @@
-"use client";
 import { nanoid } from "nanoid";
 import { IS_REMOTE } from "./config";
 import { http } from "./http";
+import { AssetVersion, PhaseResult } from "../types/assets";
+export * from "../types/assets";
 
 export type Duration = { start: string; end: string };
 
@@ -41,17 +42,7 @@ export type StrategyInputs = {
   preferences?: { tags?: string[]; ugc?: boolean; constraints?: string };
 };
 
-export type PhaseResult = {
-  phase: 1 | 2 | 3 | 4;
-  summary: string;
-  artifacts: any[];
-  candidates?: {
-    id: string;
-    name: string;
-    rationale: string;
-    highlights: string[];
-  }[];
-};
+// PhaseResult moved to types/assets.ts
 
 export type CalendarEntry = {
   id: string;
@@ -75,29 +66,9 @@ export type RunSnapshot = {
 };
 
 
-export type AssetMediaItem = {
-  type: "image" | "video";
-  url: string;
-  slide_num?: number;
-  thumbnail?: string;
-};
+// AssetMediaItem moved to types/assets.ts
 
-export type AssetVersion = {
-  id: string; // "ver_xyz"
-  status: "created" | "planning" | "ready_to_render" | "processing" | "completed" | "failed" | "waiting_for_approval";
-  createdAt: string;
-
-  // The Plan
-  blueprint?: Record<string, unknown>;
-  prompt_snapshot?: string;
-  final_used_prompt?: string; // Stored prompt that generated this version
-
-  // The Output
-  assets: AssetMediaItem[]; // Can be 1 item (Image) or 5 items (Carousel)
-
-  // Metadata
-  edit_reason?: string; // "Initial Plan" or "User Edit: Make it blue"
-};
+// AssetVersion moved to types/assets.ts
 
 // ... (keep Mock storage keys)
 const LS_ASSET_VERSIONS = "sim:assetVersions";

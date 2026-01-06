@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
-import { AssetVersion, AssetMediaItem, getAssetHistory, pollAssetVersion, previewPlan, generateAsset, createFreshVersion, resumeGeneration } from "../../lib/api";
+import { useRef, useState } from "react";
+import { AssetMediaItem } from "../../lib/api";
+import { useStudio } from "../../hooks/useStudio";
 import { AssetPreview } from "./AssetPreview";
-import { VersionTimeline } from "./VersionTimeline";
 import { PromptBar } from "./PromptBar";
 
 interface StudioModalProps {
@@ -13,12 +13,7 @@ interface StudioModalProps {
 }
 
 // Minimal Helper for Errors
-function parseErrorMessage(err: any): string {
-    if (typeof err === "string") return err;
-    if (err?.detail) return err.detail;
-    if (err?.message) return err.message;
-    return "An unknown error occurred";
-}
+
 
 // Clean Thumbnail Component
 function CarouselThumbnails({
@@ -77,125 +72,52 @@ function CarouselThumbnails({
 }
 
 export function StudioModal({ assetId, initialContext, onClose }: StudioModalProps) {
-    // Data State
-    const [versions, setVersions] = useState<AssetVersion[]>([]);
-    const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
-    const [isLoadingHistory, setIsLoadingHistory] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-
-    // Workflow State
-    const [prompt, setPrompt] = useState("");
-    const [isPlanning, setIsPlanning] = useState(false);
-    const [isGenerating, setIsGenerating] = useState(false);
-    const [isPolling, setIsPolling] = useState(false);
-
-    // Carousel Config
-    const isCarousel = initialContext.type.toLowerCase().includes("carousel");
-    const [slideNum, setSlideNum] = useState(1);
-    const [targetSlideCount, setTargetSlideCount] = useState(5);
-    const [stepByStep, setStepByStep] = useState(true);
+    // Use Hook
+    const {
+        versions,
+        activeVersion,
+        selectedVersionId,
+        setSelectedVersionId,
+        isLoadingHistory,
+        error,
+        prompt,
+        setPrompt,
+        isPlanning,
+        isGenerating,
+        isPolling,
+        isCarousel,
+        slideNum,
+        setSlideNum,
+        targetSlideCount,
+        setTargetSlideCount,
+        stepByStep,
+        setStepByStep,
+        handlePlan,
+        handleGenerate,
+        handleResume,
+        handleNewVersion
+    } = useStudio(assetId, initialContext.type);
 
     // Layout (Resizable)
     const [leftWidth, setLeftWidth] = useState(30);
     const containerRef = useRef<HTMLDivElement>(null);
     const isDragging = useRef(false);
 
-    // --- Init & Polling ---
-
-    // Load History
-    useEffect(() => {
-        let mounted = true;
-        setIsLoadingHistory(true);
-        getAssetHistory(assetId).then(list => {
-            if (!mounted) return;
-            setVersions(list);
-            if (list.length > 0) setSelectedVersionId(list[0].id);
-        }).catch(err => {
-            console.warn(err);
-            setError("Could not load history.");
-        }).finally(() => {
-            if (mounted) setIsLoadingHistory(false);
-        });
-        return () => { mounted = false; };
-    }, [assetId]);
-
-    // Active Version
-    const activeVersion = selectedVersionId
-        ? versions.find(v => v.id === selectedVersionId) || null
-        : null;
-
-    useEffect(() => setSlideNum(1), [selectedVersionId]);
-
-    // Polling
-    useEffect(() => {
-        if (!activeVersion || ["completed", "failed", "waiting_for_approval"].includes(activeVersion.status)) {
-            setIsPolling(false);
-            return;
-        }
-        setIsPolling(true);
-        const interval = setInterval(async () => {
-            try {
-                const refreshed = await pollAssetVersion(activeVersion.id);
-                if (refreshed) setVersions(prev => prev.map(v => v.id === refreshed.id ? refreshed : v));
-            } catch (err) { console.warn(err); }
-        }, 2000);
-        return () => clearInterval(interval);
-    }, [activeVersion?.id, activeVersion?.status]);
-
-
-    // --- Actions ---
-
-    const handlePlan = async () => {
-        setIsPlanning(true);
-        setError(null);
-        try {
-            // Plan logic: Get suggestion
-            const data = await previewPlan(assetId, isCarousel ? targetSlideCount : undefined);
-
-            // Just usage text suggestion now, no Blueprint UI
-            let text = data.resolved_prompt;
-            if (!text && data.blueprint?.slides) {
-                text = data.blueprint.slides.map((s: any) => `[Slide ${s.slide_num}] ${s.image_prompt}`).join("\n\n");
-            }
-            setPrompt(text || "");
-        } catch (err: any) { setError(parseErrorMessage(err)); }
-        finally { setIsPlanning(false); }
-    };
-
-    const handleGenerate = async () => {
-        setError(null);
-        setIsGenerating(true);
-        try {
-            const { versionId } = await generateAsset(assetId, prompt, isCarousel ? stepByStep : false);
-            const list = await getAssetHistory(assetId);
-            setVersions(list);
-            setSelectedVersionId(versionId);
-        } catch (err: any) { setError(parseErrorMessage(err)); }
-        finally { setIsGenerating(false); }
-    };
-
-    const handleResume = async () => {
-        if (!activeVersion) return;
-        setError(null);
-        setIsGenerating(true);
-        try {
-            await resumeGeneration(activeVersion.id);
-            setVersions(prev => prev.map(v => v.id === activeVersion.id ? { ...v, status: 'processing' } : v));
-        } catch (err: any) {
-            setError(parseErrorMessage(err));
-            setIsGenerating(false);
-        }
-    };
-
-    const handleNewVersion = () => {
-        setSelectedVersionId(null);
-        setPrompt("");
-        setError(null);
-    };
-
     const expectedTotal = activeVersion?.blueprint?.slides?.length || (isCarousel ? targetSlideCount : 1);
 
     // --- Render ---
+
+    if (error) {
+        return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                <div className="bg-white p-6 rounded-lg shadow-xl border border-red-200 max-w-md w-full">
+                    <h3 className="text-red-600 font-bold mb-2">Error</h3>
+                    <p className="text-gray-700 mb-4">{error}</p>
+                    <button onClick={onClose} className="w-full bg-gray-100 hover:bg-gray-200 text-gray-900 py-2 rounded font-medium">Close</button>
+                </div>
+            </div>
+        );
+    }
 
     if (isLoadingHistory) {
         return (
@@ -271,21 +193,21 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
                                         <button
                                             key={v.id}
                                             onClick={() => setSelectedVersionId(v.id)}
-                                            className={`w-full text-left p-3 rounded-lg border text-xs transition-all flex items-center justify-between group
+                                            className={`w-full text-left p-3 rounded-lg border text-xs transition-all flex items-center justify-center group
                                                 ${v.id === selectedVersionId
                                                     ? "bg-white border-black shadow-sm ring-1 ring-black/5"
                                                     : "bg-white border-transparent hover:border-gray-200"
                                                 }`}
                                         >
-                                            <div className="flex flex-col">
+                                            <div className="flex flex-col flex-1">
                                                 <span className={`font-medium ${v.id === selectedVersionId ? "text-gray-900" : "text-gray-500 group-hover:text-gray-700"}`}>
                                                     Version {versions.length - i}
                                                 </span>
                                                 <span className="text-[10px] text-gray-400">{new Date(v.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                             </div>
                                             <div className={`w-2 h-2 rounded-full ${v.status === 'completed' ? 'bg-green-500' :
-                                                    v.status === 'failed' ? 'bg-red-500' :
-                                                        'bg-yellow-500'
+                                                v.status === 'failed' ? 'bg-red-500' :
+                                                    'bg-yellow-500'
                                                 }`} />
                                         </button>
                                     ))}
@@ -296,11 +218,10 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
                 </div>
 
                 {/* Resizer */}
-                <div /* ... dragging logic could go here, omitting for simplicity of this clean version for now or keeping minimal width ... */
+                <div
                     className="w-[1px] bg-gray-200 cursor-col-resize hover:bg-black hover:w-0.5 transition-all z-10"
                     onMouseDown={(e) => {
                         isDragging.current = true;
-                        // Add listeners to document... simplified for brevity, refer to previous implementation for full resize logic
                         const up = () => { isDragging.current = false; document.removeEventListener('mouseup', up); document.removeEventListener('mousemove', move) };
                         const move = (ev: MouseEvent) => {
                             if (!containerRef.current) return;
@@ -336,6 +257,7 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
                                         assets={activeVersion.assets}
                                         selectedSlideInfo={activeVersion.assets.length > 1 ? { num: slideNum, total: activeVersion.assets.length } : undefined}
                                         onSelectSlide={setSlideNum}
+                                        hideThumbnails={true} // Replaced redundancy
                                     />
                                 </div>
 

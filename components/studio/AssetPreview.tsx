@@ -4,9 +4,10 @@ interface AssetPreviewProps {
     assets: AssetMediaItem[];
     selectedSlideInfo?: { num: number; total: number };
     onSelectSlide?: (num: number) => void;
+    hideThumbnails?: boolean;
 }
 
-export function AssetPreview({ assets, selectedSlideInfo, onSelectSlide }: AssetPreviewProps) {
+export function AssetPreview({ assets, selectedSlideInfo, onSelectSlide, hideThumbnails }: AssetPreviewProps) {
     const isCarousel = assets.length > 1;
     // If carousel, we show the selected slide or the first one
     const currentAsset = isCarousel && selectedSlideInfo
@@ -29,7 +30,7 @@ export function AssetPreview({ assets, selectedSlideInfo, onSelectSlide }: Asset
                 )}
             </div>
 
-            {isCarousel && onSelectSlide && (
+            {isCarousel && onSelectSlide && !hideThumbnails && (
                 <div className="mt-4 flex gap-2 overflow-x-auto py-2">
                     {assets.map((a, i) => (
                         <button

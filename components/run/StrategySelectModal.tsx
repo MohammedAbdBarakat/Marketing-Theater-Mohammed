@@ -4,7 +4,7 @@ import type { PhaseResult } from "../../store/useRunStore";
 
 type StrategyCandidate = {
   id: string;
-  name: string;
+  name: string | { title: string };
   rationale: string;
   highlights: string[];
 };
@@ -20,8 +20,16 @@ type StrategyBrief = {
 type PhaseArtifactsSummary = { title: string; items: string[] };
 type ChannelPlan = { channel: string; kpis: string[]; budget?: string; samplePost?: string };
 
-function normalizeString(s: string) {
+function normalizeString(s: unknown) {
+  if (typeof s !== "string") return "";
   return s.trim().toLowerCase();
+}
+
+function getCandidateTitle(c?: StrategyCandidate | null): string {
+  if (!c) return "";
+  if (typeof c.name === "string") return c.name;
+  if (c.name && typeof c.name === "object" && "title" in c.name) return (c.name as { title: string }).title;
+  return "";
 }
 
 function findPhase1Direction(artifacts: unknown, candidateName: string | undefined) {
@@ -90,12 +98,13 @@ export function StrategySelectModal({
   open: boolean;
   items: StrategyCandidate[];
   recommendedId?: string;
-  onSelect: (id: string) => void;
+  onSelect: (id: string) => Promise<void> | void;
   onClose: () => void;
   brief?: StrategyBrief;
   results?: Partial<Record<1 | 2 | 3 | 4, PhaseResult>>;
 }) {
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [submittingId, setSubmittingId] = useState<string | null>(null);
 
   useEffect(() => {
     function onEsc(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
@@ -117,7 +126,9 @@ export function StrategySelectModal({
   const phase2 = results?.[2];
   const phase3 = results?.[3];
 
-  const direction = useMemo(() => findPhase1Direction(phase1?.artifacts, active?.name), [phase1?.artifacts, active?.name]);
+  const activeTitle = getCandidateTitle(active);
+
+  const direction = useMemo(() => findPhase1Direction(phase1?.artifacts, activeTitle), [phase1?.artifacts, activeTitle]);
   const directionBullets = useMemo(
     () => (Array.isArray(direction?.bullets) ? direction.bullets.filter((x: unknown): x is string => typeof x === "string") : []),
     [direction]
@@ -137,7 +148,7 @@ export function StrategySelectModal({
       <div className="bg-white rounded-lg w-full max-w-5xl p-4 max-h-[85vh] overflow-hidden flex flex-col">
         <div className="flex items-center justify-between mb-3">
           <div className="font-semibold">Select a Strategy</div>
-          <button className="text-sm" onClick={onClose}>Close</button>
+          <button className="text-sm" onClick={onClose} disabled={!!submittingId}>Close</button>
         </div>
 
         {brief ? (
@@ -162,26 +173,30 @@ export function StrategySelectModal({
               {items.map((it) => {
                 const isRecommended = it.id === recommendedId;
                 const isActive = it.id === active?.id;
+                const isSubmittingThis = submittingId === it.id;
+
                 return (
                   <div
                     key={it.id}
                     role="button"
                     tabIndex={0}
                     aria-pressed={isActive}
-                    className={`w-full text-left border rounded p-3 cursor-pointer ${isActive ? "border-black bg-gray-50" : "hover:bg-gray-50"} ${isRecommended ? "border-blue-500" : ""}`}
-                    onClick={() => setActiveId(it.id)}
+                    className={`w-full text-left border rounded p-3 cursor-pointer ${isActive ? "border-black bg-gray-50" : "hover:bg-gray-50"} ${isRecommended ? "border-blue-500" : ""} ${!!submittingId ? "opacity-70 pointer-events-none" : ""}`}
+                    onClick={() => !submittingId && setActiveId(it.id)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
-                        setActiveId(it.id);
+                        if (!submittingId) setActiveId(it.id);
                       }
                     }}
                   >
                     <div className="flex items-center justify-between gap-3">
-                      <div className="font-medium">{it.name}</div>
+                      <div className="font-medium">{getCandidateTitle(it)}</div>
                       {isRecommended && <span className="text-xs text-blue-600">Recommended</span>}
                     </div>
-                    <div className="text-sm text-gray-700 mt-1">{it.rationale}</div>
+                    {typeof it.rationale === "string" ? (
+                      <div className="text-sm text-gray-700 mt-1">{it.rationale}</div>
+                    ) : null}
                     <div className="flex gap-2 mt-2 flex-wrap">
                       {(it.highlights || []).map((h, i) => (
                         <span key={i} className="text-xs px-2 py-1 rounded-full bg-gray-100">
@@ -191,14 +206,23 @@ export function StrategySelectModal({
                     </div>
                     <div className="pt-2 text-right">
                       <button
-                        className="text-sm px-3 py-1 rounded bg-black text-white"
-                        onClick={(e) => {
+                        className={`text-sm px-3 py-1 rounded text-white ${isSubmittingThis ? "bg-gray-600 cursor-not-allowed" : "bg-black"}`}
+                        onClick={async (e) => {
                           e.stopPropagation();
-                          onSelect(it.id);
+                          if (submittingId) return;
+
+                          setSubmittingId(it.id);
+                          try {
+                            await onSelect(it.id);
+                          } finally {
+                            // Only reset if component is still mounted, though unmount usually clears state
+                            setSubmittingId(null);
+                          }
                         }}
                         type="button"
+                        disabled={!!submittingId}
                       >
-                        Choose
+                        {isSubmittingThis ? "Selecting..." : "Choose"}
                       </button>
                     </div>
                   </div>
@@ -214,14 +238,16 @@ export function StrategySelectModal({
               <div className="space-y-4">
                 <div>
                   <div className="text-xs text-gray-600">Details</div>
-                  <div className="text-lg font-semibold">{active.name}</div>
-                  <div className="text-sm text-gray-700">{active.rationale}</div>
+                  <div className="text-lg font-semibold">{getCandidateTitle(active)}</div>
+                  {typeof active.rationale === "string" ? (
+                    <div className="text-sm text-gray-700">{active.rationale}</div>
+                  ) : null}
                 </div>
 
                 <div className="grid gap-3">
                   <div className="border rounded p-3">
                     <div className="text-sm font-medium mb-1">Phase 1 — Direction</div>
-                    {phase1?.summary ? (
+                    {phase1?.summary && typeof phase1.summary === "string" ? (
                       <div className="text-sm text-gray-700 mb-2">{phase1.summary}</div>
                     ) : null}
                     {directionBullets.length ? (
@@ -249,7 +275,7 @@ export function StrategySelectModal({
 
                   <div className="border rounded p-3">
                     <div className="text-sm font-medium mb-1">Phase 2 — Refinements</div>
-                    {phase2?.summary ? (
+                    {phase2?.summary && typeof phase2.summary === "string" ? (
                       <div className="text-sm text-gray-700 mb-2">{phase2.summary}</div>
                     ) : null}
                     {refinements.length ? (
@@ -274,7 +300,7 @@ export function StrategySelectModal({
 
                   <div className="border rounded p-3">
                     <div className="text-sm font-medium mb-1">Phase 3 — Channel Plan</div>
-                    {phase3?.summary ? (
+                    {phase3?.summary && typeof phase3.summary === "string" ? (
                       <div className="text-sm text-gray-700 mb-2">{phase3.summary}</div>
                     ) : null}
                     {channels.length ? (

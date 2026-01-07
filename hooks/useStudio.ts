@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AssetVersion, getAssetHistory, pollAssetVersion, previewPlan, generateAsset, resumeGeneration } from "../lib/api";
 
 export function useStudio(assetId: string, initialType: string) {
@@ -28,21 +28,29 @@ export function useStudio(assetId: string, initialType: string) {
     // Reset slide on version change
     useEffect(() => setSlideNum(1), [selectedVersionId]);
 
+    const fetchedAssetId = useRef<string | null>(null);
+
     // Load History
     useEffect(() => {
-        let mounted = true;
+        // Prevent double-fetch in StrictMode
+        if (fetchedAssetId.current === assetId) return;
+        fetchedAssetId.current = assetId;
+
         setIsLoadingHistory(true);
         getAssetHistory(assetId).then(list => {
-            if (!mounted) return;
+            // Ensure we only update if this is still the relevant asset
+            if (fetchedAssetId.current !== assetId) return;
+
             setVersions(list);
             if (list.length > 0) setSelectedVersionId(list[0].id);
         }).catch(err => {
+            if (fetchedAssetId.current !== assetId) return;
             console.warn(err);
             setError("Could not load history.");
         }).finally(() => {
-            if (mounted) setIsLoadingHistory(false);
+            if (fetchedAssetId.current !== assetId) return;
+            setIsLoadingHistory(false);
         });
-        return () => { mounted = false; };
     }, [assetId]);
 
     // Polling
@@ -59,6 +67,7 @@ export function useStudio(assetId: string, initialType: string) {
             } catch (err) { console.warn(err); }
         }, 2000);
         return () => clearInterval(interval);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeVersion?.id, activeVersion?.status]);
 
     // Actions
@@ -76,10 +85,10 @@ export function useStudio(assetId: string, initialType: string) {
             const data = await previewPlan(assetId, isCarousel ? targetSlideCount : undefined);
             let text = data.resolved_prompt;
             if (!text && data.blueprint?.slides) {
-                text = data.blueprint.slides.map((s: any) => `[Slide ${s.slide_num}] ${s.image_prompt}`).join("\n\n");
+                text = data.blueprint.slides.map((s: { slide_num: number; image_prompt: string }) => `[Slide ${s.slide_num}] ${s.image_prompt}`).join("\n\n");
             }
             setPrompt(text || "");
-        } catch (err: any) { setError(parseErrorMessage(err)); }
+        } catch (err) { setError(parseErrorMessage(err)); }
         finally { setIsPlanning(false); }
     };
 
@@ -91,7 +100,7 @@ export function useStudio(assetId: string, initialType: string) {
             const list = await getAssetHistory(assetId);
             setVersions(list);
             setSelectedVersionId(versionId);
-        } catch (err: any) { setError(parseErrorMessage(err)); }
+        } catch (err) { setError(parseErrorMessage(err)); }
         finally { setIsGenerating(false); }
     };
 
@@ -102,7 +111,7 @@ export function useStudio(assetId: string, initialType: string) {
         try {
             await resumeGeneration(activeVersion.id);
             setVersions(prev => prev.map(v => v.id === activeVersion.id ? { ...v, status: 'processing' } : v));
-        } catch (err: any) {
+        } catch (err) {
             setError(parseErrorMessage(err));
             setIsGenerating(false);
         }

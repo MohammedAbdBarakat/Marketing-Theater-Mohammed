@@ -10,6 +10,9 @@ export function useStudio(assetId: string, initialType: string) {
 
     // Workflow State
     const [prompt, setPrompt] = useState("");
+    const [structuredPrompts, setStructuredPrompts] = useState<string[]>(
+        initialType.toLowerCase().includes("carousel") ? Array.from({ length: 3 }).map(() => "") : []
+    ); // New state for structured slides
     const [isPlanning, setIsPlanning] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
     const [isPolling, setIsPolling] = useState(false);
@@ -17,8 +20,26 @@ export function useStudio(assetId: string, initialType: string) {
     // Carousel Config
     const isCarousel = initialType.toLowerCase().includes("carousel");
     const [slideNum, setSlideNum] = useState(1);
-    const [targetSlideCount, setTargetSlideCount] = useState(5);
+    const [targetSlideCount, setTargetSlideCountState] = useState(5);
     const [stepByStep, setStepByStep] = useState(true);
+
+    const setTargetSlideCount = (count: number) => {
+        setTargetSlideCountState(count);
+        // Auto-switch to structured mode or resize if already in it
+        setStructuredPrompts(prev => {
+            const newArr = Array.from({ length: count }).map(() => "");
+            // Preserve existing inputs
+            prev.forEach((val, idx) => {
+                if (idx < count) newArr[idx] = val;
+            });
+
+            // If coming from single-prompt mode, try to be helpful
+            if (prev.length === 0 && prompt.trim()) {
+                newArr[0] = prompt;
+            }
+            return newArr;
+        });
+    };
 
     // Active Version
     const activeVersion = selectedVersionId
@@ -83,11 +104,18 @@ export function useStudio(assetId: string, initialType: string) {
         setError(null);
         try {
             const data = await previewPlan(assetId, isCarousel ? targetSlideCount : undefined);
-            let text = data.resolved_prompt;
-            if (!text && data.blueprint?.slides) {
-                text = data.blueprint.slides.map((s: { slide_num: number; image_prompt: string }) => `[Slide ${s.slide_num}] ${s.image_prompt}`).join("\n\n");
+
+            if (isCarousel && data.blueprint?.slides) {
+                // Structured Handling
+                const slides = data.blueprint.slides.sort((a: any, b: any) => a.slide_num - b.slide_num);
+                const texts = slides.map((s: any) => s.image_prompt);
+                setStructuredPrompts(texts);
+                setPrompt(texts.join("\n\n")); // Fallback/Sync for single text box if needed
+            } else {
+                // Single Image / Simple
+                setPrompt(data.resolved_prompt || "");
+                setStructuredPrompts([]);
             }
-            setPrompt(text || "");
         } catch (err) { setError(parseErrorMessage(err)); }
         finally { setIsPlanning(false); }
     };
@@ -96,10 +124,27 @@ export function useStudio(assetId: string, initialType: string) {
         setError(null);
         setIsGenerating(true);
         try {
-            const { versionId } = await generateAsset(assetId, prompt, isCarousel ? stepByStep : false);
-            const list = await getAssetHistory(assetId);
-            setVersions(list);
-            setSelectedVersionId(versionId);
+            // Construct final prompt based on mode
+            let finalPromptToSend = prompt;
+            if (isCarousel && structuredPrompts.length > 0) {
+                finalPromptToSend = structuredPrompts.map((p, i) => `[Slide ${i + 1}] ${p}`).join("\n\n");
+            }
+
+            // Optimistic Update: API now returns full object
+            const newVersion = await generateAsset(assetId, finalPromptToSend, isCarousel ? stepByStep : false, isCarousel ? targetSlideCount : 1);
+
+            setVersions(prev => {
+                // Deduplicate: If ID already exists (race condition), don't add again
+                if (prev.some(v => v.id === newVersion.id)) return prev;
+                return [newVersion, ...prev];
+            });
+            setSelectedVersionId(newVersion.id);
+
+            // Fetch history in background just in case, but no block
+            getAssetHistory(assetId).then(list => {
+                setVersions(list); // We might want smarter merge here too, but dedupe on add helps most
+            }).catch(console.warn);
+
         } catch (err) { setError(parseErrorMessage(err)); }
         finally { setIsGenerating(false); }
     };
@@ -120,6 +165,7 @@ export function useStudio(assetId: string, initialType: string) {
     const handleNewVersion = () => {
         setSelectedVersionId(null);
         setPrompt("");
+        setStructuredPrompts([]);
         setError(null);
     };
 
@@ -135,6 +181,8 @@ export function useStudio(assetId: string, initialType: string) {
         // Workflow
         prompt,
         setPrompt,
+        structuredPrompts,
+        setStructuredPrompts,
         isPlanning,
         isGenerating,
         isPolling,

@@ -92,6 +92,8 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
         setTargetSlideCount,
         stepByStep,
         setStepByStep,
+        structuredPrompts,
+        setStructuredPrompts,
         handlePlan,
         handleGenerate,
         handleResume,
@@ -294,6 +296,8 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
                         <PromptBar
                             prompt={prompt}
                             onChange={setPrompt}
+                            structuredPrompts={structuredPrompts}
+                            onStructuredChange={setStructuredPrompts}
                             onPlan={handlePlan}
                             onGenerate={handleGenerate}
                             isPlanning={isPlanning}

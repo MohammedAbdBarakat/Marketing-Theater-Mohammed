@@ -96,17 +96,30 @@ export async function previewPlan(assetId: string, slideCount?: number): Promise
 
   // Mock Logic
   return new Promise(resolve => setTimeout(() => {
-    resolve({
-      resolved_prompt: "A cinematic shot of a futuristic coffee shop with neon signs, 8k resolution, photorealistic."
-    });
+    if (slideCount && slideCount > 1) {
+      resolve({
+        resolved_prompt: `A carousel with ${slideCount} slides about ocean opulence.`,
+        blueprint: {
+          image_prompt: "A highly detailed description of a luxurious yacht...",
+          slides: Array.from({ length: slideCount }).map((_, i) => ({
+            slide_num: i + 1,
+            image_prompt: `[Slide ${i + 1}] Detailed composition for slide ${i + 1} with visual description...`
+          }))
+        }
+      });
+    } else {
+      resolve({
+        resolved_prompt: "A cinematic shot of a futuristic coffee shop with neon signs, 8k resolution, photorealistic."
+      });
+    }
   }, 1000));
 }
 
-export async function generateAsset(assetId: string, finalPrompt: string, stepByStep: boolean = false): Promise<{ versionId: string }> {
+export async function generateAsset(assetId: string, finalPrompt: string, stepByStep: boolean = false, targetSlideCount: number = 1): Promise<AssetVersion> {
   if (IS_REMOTE) {
-    return http<{ versionId: string }>(`/api/assets/${assetId}/generate`, {
+    return http<AssetVersion>(`/api/assets/${assetId}/generate`, {
       method: "POST",
-      body: JSON.stringify({ final_prompt: finalPrompt, step_by_step: stepByStep }),
+      body: JSON.stringify({ final_prompt: finalPrompt, step_by_step: stepByStep, slide_count: targetSlideCount }),
     });
   }
 
@@ -130,23 +143,39 @@ export async function generateAsset(assetId: string, finalPrompt: string, stepBy
   setTimeout(() => {
     const updatedStore = read<Record<string, AssetVersion[]>>(LS_ASSET_VERSIONS, {});
     const t = updatedStore[assetId]?.find(x => x.id === versionId);
-    if (t) {
-      t.status = "completed";
-      const seed = Math.random();
-      if (seed > 0.5) {
-        t.assets = [{ type: "image", url: `https://picsum.photos/seed/${versionId}/1080/1080` }];
+    if (!t) return;
+
+    if (targetSlideCount > 1) {
+      // Carousel Logic
+      if (stepByStep) {
+        // Step 1 only
+        t.assets = [{
+          type: "image",
+          url: `https://picsum.photos/seed/${versionId}-1/1080/1080`,
+          slide_num: 1
+        }];
+        t.status = "waiting_for_approval";
+        write(LS_ASSET_VERSIONS, updatedStore);
       } else {
-        t.assets = Array.from({ length: 4 }).map((_, i) => ({
+        // All at once
+        t.assets = Array.from({ length: targetSlideCount }).map((_, i) => ({
           type: "image",
           url: `https://picsum.photos/seed/${versionId}-${i}/1080/1080`,
           slide_num: i + 1
         }));
+        t.status = "completed";
+        write(LS_ASSET_VERSIONS, updatedStore);
       }
+    } else {
+      // Single Image
+      t.status = "completed";
+      const seed = Math.random();
+      t.assets = [{ type: "image", url: `https://picsum.photos/seed/${versionId}/1080/1080` }];
       write(LS_ASSET_VERSIONS, updatedStore);
     }
-  }, 5000);
+  }, 2000);
 
-  return { versionId };
+  return v;
 }
 
 export async function resumeGeneration(versionId: string): Promise<void> {
@@ -167,8 +196,10 @@ export async function resumeGeneration(versionId: string): Promise<void> {
         const refreshedStore = read<Record<string, AssetVersion[]>>(LS_ASSET_VERSIONS, {});
         const refreshedV = refreshedStore[assetId].find(x => x.id === versionId);
         if (refreshedV) {
-          // Logic to add next slide or finish
+          // Add remaining slides
           const currentCount = refreshedV.assets.length;
+          // Finish the rest
+          // In real step-by-step we might restart after every slide, but for mock let's just finish up or Add 1 by 1
           const nextSlideNum = currentCount + 1;
           refreshedV.assets.push({
             type: "image",
@@ -176,12 +207,13 @@ export async function resumeGeneration(versionId: string): Promise<void> {
             slide_num: nextSlideNum
           });
 
-          // Allow up to 5 slides
-          if (refreshedV.assets.length >= 5) {
+          if (refreshedV.assets.length >= 5) { // Or target count.. hard to know target in resume mock unless stored
             refreshedV.status = "completed";
           } else {
+            // Continue step by step? Let's say yes for the mock
             refreshedV.status = "waiting_for_approval";
           }
+
           write(LS_ASSET_VERSIONS, refreshedStore);
         }
       }, 2000);

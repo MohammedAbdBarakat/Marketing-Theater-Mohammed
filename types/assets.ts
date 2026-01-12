@@ -36,3 +36,41 @@ export type PhaseResult = {
         highlights: string[];
     }[];
 };
+
+// --- API Request Types ---
+export interface GenerateAssetRequest {
+    final_prompt?: string;
+    step_by_step?: boolean;
+    slide_count?: number;
+
+    // ✨ NEW FIELDS
+    aspect_ratio?: "1:1" | "16:9" | "9:16" | "4:5" | "3:4"; // Default: "4:5"
+    reference_image?: string; // Base64 string or URL
+    description?: string; // Optional context override
+}
+
+export interface EditAssetRequest {
+    sourceVersionId: string;
+    prompt: string;
+    slide_num?: number;
+
+    // ✨ NEW FIELDS
+    aspect_ratio?: string; // Can change aspect ratio during edit
+    reference_image?: string;
+}
+
+// --- SSE Event Type ---
+export interface AssetUpdateEvent {
+    run_id: string;
+    version_id: string;
+
+    // Status: 'processing' | 'completed' | 'failed'
+    status: string;
+
+    // 📸 Payload Details (conditional)
+    slide_num?: number; // Present if a specific slide is ready (Carousel)
+    url?: string;       // Present if an image/video is ready
+    error?: string;     // Present if failed
+    count?: number;     // Total count (on completion)
+}
+

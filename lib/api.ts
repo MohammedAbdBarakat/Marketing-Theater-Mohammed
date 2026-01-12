@@ -1,7 +1,7 @@
 import { nanoid } from "nanoid";
 import { IS_REMOTE } from "./config";
 import { http } from "./http";
-import { AssetVersion, PhaseResult } from "../types/assets";
+import { AssetVersion, PhaseResult, GenerateAssetRequest, EditAssetRequest } from "../types/assets";
 export * from "../types/assets";
 
 export type Duration = { start: string; end: string };
@@ -115,11 +115,23 @@ export async function previewPlan(assetId: string, slideCount?: number): Promise
   }, 1000));
 }
 
-export async function generateAsset(assetId: string, finalPrompt: string, stepByStep: boolean = false, targetSlideCount: number = 1): Promise<AssetVersion> {
+export async function generateAsset(
+  assetId: string,
+  finalPrompt: string,
+  stepByStep: boolean = false,
+  targetSlideCount: number = 1,
+  options: { aspect_ratio?: string } = {}
+): Promise<AssetVersion> {
   if (IS_REMOTE) {
+    const payload: GenerateAssetRequest = {
+      final_prompt: finalPrompt,
+      step_by_step: stepByStep,
+      slide_count: targetSlideCount,
+      aspect_ratio: options.aspect_ratio as any
+    };
     return http<AssetVersion>(`/api/assets/${assetId}/generate`, {
       method: "POST",
-      body: JSON.stringify({ final_prompt: finalPrompt, step_by_step: stepByStep, slide_count: targetSlideCount }),
+      body: JSON.stringify(payload),
     });
   }
 
@@ -132,12 +144,16 @@ export async function generateAsset(assetId: string, finalPrompt: string, stepBy
     assets: [],
     edit_reason: "Generated from Prompt",
     final_used_prompt: finalPrompt,
-    blueprint: { image_prompt: finalPrompt }
+    blueprint: { image_prompt: finalPrompt, aspect_ratio: options.aspect_ratio }
   };
 
   const store = read<Record<string, AssetVersion[]>>(LS_ASSET_VERSIONS, {});
-  store[assetId] = [...(store[assetId] || []), v];
-  write(LS_ASSET_VERSIONS, store);
+  // Prevent duplicate writes in mock
+  const list = store[assetId] || [];
+  if (!list.some(x => x.id === v.id)) {
+    store[assetId] = [...list, v];
+    write(LS_ASSET_VERSIONS, store);
+  }
 
   // Simulate completion
   setTimeout(() => {
@@ -354,7 +370,7 @@ export async function executeGeneration(assetId: string, targetVersionId: string
 
 export async function submitEdit(
   assetId: string,
-  payload: { sourceVersionId: string; prompt: string; slideNum?: number }
+  payload: { sourceVersionId: string; prompt: string; slideNum?: number; aspect_ratio?: string }
 ): Promise<{ newVersionId: string; statusUrl: string }> {
   if (IS_REMOTE) {
     return http<{ newVersionId: string; statusUrl: string }>(`/api/assets/${assetId}/edit`, {

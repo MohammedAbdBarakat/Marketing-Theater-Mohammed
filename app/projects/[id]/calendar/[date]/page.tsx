@@ -147,6 +147,7 @@ export default function CalendarDayPage() {
       {studioOpen && selectedForStudio && (
         <StudioModal
           assetId={selectedForStudio.id}
+          runId={run.runId || "mock-run-id"} // Safe fallback or ensure runId is present
           initialContext={{
             title: selectedForStudio.title,
             channel: selectedForStudio.channel,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { AssetMediaItem } from "../../lib/api";
 import { useStudio } from "../../hooks/useStudio";
 import { AssetPreview } from "./AssetPreview";
@@ -8,6 +8,7 @@ import { PromptBar } from "./PromptBar";
 
 interface StudioModalProps {
     assetId: string;
+    runId: string; // ✨ Streaming
     initialContext: { title: string; channel: string; type: string; baseText: string; date?: string };
     onClose: () => void;
 }
@@ -40,7 +41,9 @@ function CarouselThumbnails({
                 const isGenerated = !!effectiveAsset;
                 const isCurrent = slideNum === currentSlide;
 
-                const isNext = !isGenerated && slideNum === (assets.length + 1) && (status === 'processing' || status === 'waiting_for_approval');
+                const isNextSlot = !isGenerated && slideNum === (assets.length + 1);
+                const showSpinner = isNextSlot && status === 'processing';
+                const showReady = isNextSlot && status === 'waiting_for_approval';
 
                 return (
                     <button
@@ -48,19 +51,22 @@ function CarouselThumbnails({
                         onClick={() => isGenerated ? onSelect(slideNum) : null}
                         disabled={!isGenerated}
                         className={`
-                            relative w-14 h-14 rounded border flex-shrink-0 transition-all overflow-hidden
+                            relative w-14 h-14 rounded border flex-shrink-0 transition-all overflow-hidden flex items-center justify-center
                             ${isCurrent ? "border-black ring-1 ring-black shadow-md z-10" : "border-gray-200 hover:border-gray-300"}
                             ${!isGenerated ? "cursor-default bg-gray-50" : "cursor-pointer bg-white"}
+                            ${showReady ? "border-dashed border-gray-400 bg-gray-50" : ""}
                         `}
                     >
                         {isGenerated ? (
                             <img src={effectiveAsset.url} alt={`Slide ${slideNum}`} className="w-full h-full object-cover" />
-                        ) : isNext ? (
-                            <div className="w-full h-full flex items-center justify-center">
-                                <div className="w-4 h-4 border-2 border-gray-300 border-t-black rounded-full animate-spin" />
+                        ) : showSpinner ? (
+                            <div className="w-4 h-4 border-2 border-gray-300 border-t-black rounded-full animate-spin" />
+                        ) : showReady ? (
+                            <div className="text-gray-400">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
                             </div>
                         ) : (
-                            <div className="w-full h-full flex items-center justify-center text-[10px] text-gray-300 font-bold font-mono">
+                            <div className="text-[10px] text-gray-300 font-bold font-mono">
                                 {slideNum}
                             </div>
                         )}
@@ -71,7 +77,7 @@ function CarouselThumbnails({
     );
 }
 
-export function StudioModal({ assetId, initialContext, onClose }: StudioModalProps) {
+export function StudioModal({ assetId, runId, initialContext, onClose }: StudioModalProps) {
     // Use Hook
     const {
         versions,
@@ -94,11 +100,13 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
         setStepByStep,
         structuredPrompts,
         setStructuredPrompts,
+        aspectRatio,
+        setAspectRatio,
         handlePlan,
         handleGenerate,
         handleResume,
         handleNewVersion
-    } = useStudio(assetId, initialContext.type);
+    } = useStudio(runId, assetId, initialContext.type);
 
     // Layout (Resizable)
     const [leftWidth, setLeftWidth] = useState(30);
@@ -106,6 +114,24 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
     const isDragging = useRef(false);
 
     const expectedTotal = activeVersion?.blueprint?.slides?.length || (isCarousel ? targetSlideCount : 1);
+
+    // Resize Logic
+    useEffect(() => {
+        const move = (ev: MouseEvent) => {
+            if (!isDragging.current || !containerRef.current) return;
+            const rect = containerRef.current.getBoundingClientRect();
+            const p = ((ev.clientX - rect.left) / rect.width) * 100;
+            if (p > 20 && p < 60) setLeftWidth(p);
+        };
+        const up = () => { isDragging.current = false; };
+
+        document.addEventListener('mousemove', move);
+        document.addEventListener('mouseup', up);
+        return () => {
+            document.removeEventListener('mousemove', move);
+            document.removeEventListener('mouseup', up);
+        };
+    }, []);
 
     // --- Render ---
 
@@ -187,34 +213,39 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
                                 </button>
                             </div>
 
-                            {versions.length === 0 ? (
-                                <div className="text-sm text-gray-400 italic text-center py-4">No iterations yet.</div>
-                            ) : (
-                                <div className="space-y-2">
-                                    {versions.map((v, i) => (
-                                        <button
-                                            key={v.id}
-                                            onClick={() => setSelectedVersionId(v.id)}
-                                            className={`w-full text-left p-3 rounded-lg border text-xs transition-all flex items-center justify-center group
-                                                ${v.id === selectedVersionId
-                                                    ? "bg-white border-black shadow-sm ring-1 ring-black/5"
-                                                    : "bg-white border-transparent hover:border-gray-200"
-                                                }`}
-                                        >
-                                            <div className="flex flex-col flex-1">
-                                                <span className={`font-medium ${v.id === selectedVersionId ? "text-gray-900" : "text-gray-500 group-hover:text-gray-700"}`}>
-                                                    Version {versions.length - i}
-                                                </span>
-                                                <span className="text-[10px] text-gray-400">{new Date(v.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                                            </div>
-                                            <div className={`w-2 h-2 rounded-full ${v.status === 'completed' ? 'bg-green-500' :
-                                                v.status === 'failed' ? 'bg-red-500' :
-                                                    'bg-yellow-500'
-                                                }`} />
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
+                            {(() => {
+                                // Defensive deduplication for render
+                                const uniqueVersions = Array.from(new Map(versions.map(v => [v.id, v])).values());
+
+                                return uniqueVersions.length === 0 ? (
+                                    <div className="text-sm text-gray-400 italic text-center py-4">No iterations yet.</div>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {uniqueVersions.map((v, i) => (
+                                            <button
+                                                key={v.id || i}
+                                                onClick={() => setSelectedVersionId(v.id)}
+                                                className={`w-full text-left p-3 rounded-lg border text-xs transition-all flex items-center justify-center group
+                                                    ${v.id === selectedVersionId
+                                                        ? "bg-white border-black shadow-sm ring-1 ring-black/5"
+                                                        : "bg-white border-transparent hover:border-gray-200"
+                                                    }`}
+                                            >
+                                                <div className="flex flex-col flex-1">
+                                                    <span className={`font-medium ${v.id === selectedVersionId ? "text-gray-900" : "text-gray-500 group-hover:text-gray-700"}`}>
+                                                        Version {uniqueVersions.length - i}
+                                                    </span>
+                                                    <span className="text-[10px] text-gray-400">{new Date(v.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                </div>
+                                                <div className={`w-2 h-2 rounded-full ${v.status === 'completed' ? 'bg-green-500' :
+                                                    v.status === 'failed' ? 'bg-red-500' :
+                                                        'bg-yellow-500'
+                                                    }`} />
+                                            </button>
+                                        ))}
+                                    </div>
+                                );
+                            })()}
                         </div>
                     </div>
                 </div>
@@ -224,15 +255,7 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
                     className="w-[1px] bg-gray-200 cursor-col-resize hover:bg-black hover:w-0.5 transition-all z-10"
                     onMouseDown={(e) => {
                         isDragging.current = true;
-                        const up = () => { isDragging.current = false; document.removeEventListener('mouseup', up); document.removeEventListener('mousemove', move) };
-                        const move = (ev: MouseEvent) => {
-                            if (!containerRef.current) return;
-                            const rect = containerRef.current.getBoundingClientRect();
-                            const p = ((ev.clientX - rect.left) / rect.width) * 100;
-                            if (p > 20 && p < 60) setLeftWidth(p);
-                        };
-                        document.addEventListener('mouseup', up);
-                        document.addEventListener('mousemove', move);
+                        e.preventDefault(); // Prevent text selection
                     }}
                 />
 
@@ -303,34 +326,51 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
                             isPlanning={isPlanning}
                             isGenerating={isGenerating || (activeVersion?.status === "processing")}
                             disabled={isPolling}
-                            controls={isCarousel ? (
+                            controls={(
                                 <>
+                                    {/* Aspect Ratio */}
                                     <div className="flex items-center gap-2 border-r border-gray-200 pr-4 mr-2">
-                                        <span className="text-[10px] font-bold text-gray-400 uppercase">Slides</span>
-                                        <div className="flex gap-1 bg-gray-100 p-0.5 rounded-md">
-                                            {[3, 4, 5].map(n => (
-                                                <button
-                                                    key={n}
-                                                    onClick={() => setTargetSlideCount(n)}
-                                                    className={`w-6 h-6 flex items-center justify-center text-[10px] font-bold rounded transition-all
-                                                        ${targetSlideCount === n ? 'bg-white shadow-sm text-black' : 'text-gray-400 hover:text-gray-600'}`}
-                                                >
-                                                    {n}
-                                                </button>
-                                            ))}
-                                        </div>
+                                        <span className="text-[10px] font-bold text-gray-400 uppercase">Ratio</span>
+                                        <select
+                                            value={aspectRatio}
+                                            onChange={e => setAspectRatio(e.target.value)}
+                                            disabled={isGenerating || activeVersion?.status === "processing"}
+                                            className="text-xs border-none bg-gray-100 rounded-md py-1 pl-2 pr-6 focus:ring-0 cursor-pointer font-medium"
+                                        >
+                                            {["1:1", "16:9", "9:16", "4:5", "3:4"].map(r => <option key={r} value={r}>{r}</option>)}
+                                        </select>
                                     </div>
-                                    <label className="flex items-center gap-2 cursor-pointer group">
-                                        <input
-                                            type="checkbox"
-                                            checked={stepByStep}
-                                            onChange={e => setStepByStep(e.target.checked)}
-                                            className="w-3.5 h-3.5 rounded border-gray-300 text-black focus:ring-0 checked:bg-black transition-colors"
-                                        />
-                                        <span className="text-xs font-medium text-gray-500 group-hover:text-gray-900 transition-colors">Step-by-Step</span>
-                                    </label>
+
+                                    {isCarousel && (
+                                        <>
+                                            <div className="flex items-center gap-2 border-r border-gray-200 pr-4 mr-2">
+                                                <span className="text-[10px] font-bold text-gray-400 uppercase">Slides</span>
+                                                <div className="flex gap-1 bg-gray-100 p-0.5 rounded-md">
+                                                    {[3, 4, 5].map(n => (
+                                                        <button
+                                                            key={n}
+                                                            onClick={() => setTargetSlideCount(n)}
+                                                            className={`w-6 h-6 flex items-center justify-center text-[10px] font-bold rounded transition-all
+                                                                ${targetSlideCount === n ? 'bg-white shadow-sm text-black' : 'text-gray-400 hover:text-gray-600'}`}
+                                                        >
+                                                            {n}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <label className="flex items-center gap-2 cursor-pointer group">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={stepByStep}
+                                                    onChange={e => setStepByStep(e.target.checked)}
+                                                    className="w-3.5 h-3.5 rounded border-gray-300 text-black focus:ring-0 checked:bg-black transition-colors"
+                                                />
+                                                <span className="text-xs font-medium text-gray-500 group-hover:text-gray-900 transition-colors">Step-by-Step</span>
+                                            </label>
+                                        </>
+                                    )}
                                 </>
-                            ) : undefined}
+                            )}
                         />
                     </div>
 

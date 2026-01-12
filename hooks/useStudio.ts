@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from "react";
-import { AssetVersion, getAssetHistory, pollAssetVersion, previewPlan, generateAsset, resumeGeneration } from "../lib/api";
+import { IS_REMOTE } from "../lib/config";
+import { useRunStream } from "./useRunStream";
+import { AssetVersion, AssetUpdateEvent, getAssetHistory, pollAssetVersion, previewPlan, generateAsset, resumeGeneration } from "../lib/api";
 
-export function useStudio(assetId: string, initialType: string) {
+export function useStudio(runId: string, assetId: string, initialType: string) {
     // Data State
     const [versions, setVersions] = useState<AssetVersion[]>([]);
     const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
@@ -22,6 +24,9 @@ export function useStudio(assetId: string, initialType: string) {
     const [slideNum, setSlideNum] = useState(1);
     const [targetSlideCount, setTargetSlideCountState] = useState(5);
     const [stepByStep, setStepByStep] = useState(true);
+
+    // Aspect Ratio Config
+    const [aspectRatio, setAspectRatio] = useState<string>("4:5");
 
     const setTargetSlideCount = (count: number) => {
         setTargetSlideCountState(count);
@@ -74,8 +79,12 @@ export function useStudio(assetId: string, initialType: string) {
         });
     }, [assetId]);
 
-    // Polling
+    // Polling (Legacy/Mock Support)
     useEffect(() => {
+        // Only poll if NOT remote (mock mode) or if stream fails?
+        // Let's strictly use polling for Mock mode as Stream URL won't exist.
+        if (IS_REMOTE) return;
+
         if (!activeVersion || ["completed", "failed", "waiting_for_approval"].includes(activeVersion.status)) {
             setIsPolling(false);
             return;
@@ -90,6 +99,92 @@ export function useStudio(assetId: string, initialType: string) {
         return () => clearInterval(interval);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeVersion?.id, activeVersion?.status]);
+
+    // Streaming (Remote Only)
+    useRunStream(IS_REMOTE ? runId : undefined, (event: AssetUpdateEvent) => {
+        setVersions(prev => {
+            return prev.map(v => {
+                if (v.id !== event.version_id) return v;
+
+                // Found the version, update it
+                const updated = { ...v, status: event.status as any };
+
+                // Handle Slide/URL Update
+                if (event.url) {
+                    let newAssets: any[] = [];
+
+                    // Check if it's a JSON string (Array of slides)
+                    if (event.url.trim().startsWith('[') || event.url.trim().startsWith('{')) {
+                        try {
+                            const parsed = JSON.parse(event.url);
+                            if (Array.isArray(parsed)) {
+                                newAssets = parsed;
+                            } else {
+                                newAssets = [parsed];
+                            }
+                        } catch (e) {
+                            console.warn("Failed to parse event.url as JSON", e);
+                            // Fallback to single asset if parse fails but it looked like JSON? 
+                            // Or maybe it was just a weird URL. Treat as single.
+                            newAssets = [{
+                                type: "image",
+                                url: event.url,
+                                slide_num: event.slide_num
+                            }];
+                        }
+                    } else {
+                        // Regular URL string
+                        newAssets = [{
+                            type: "image",
+                            url: event.url,
+                            slide_num: event.slide_num
+                        }];
+                    }
+
+                    // Upsert Logic
+                    const existingAssets = [...(v.assets || [])];
+
+                    newAssets.forEach(newItem => {
+                        if (newItem.slide_num) {
+                            const idx = existingAssets.findIndex(a => a.slide_num === newItem.slide_num);
+                            if (idx >= 0) {
+                                existingAssets[idx] = { ...existingAssets[idx], ...newItem }; // Merge/Update
+                            } else {
+                                existingAssets.push(newItem);
+                            }
+                        } else {
+                            // If no slide num, maybe replace all? or push?
+                            // For single image scenario, we usually just replace.
+                            if (!event.slide_num && newAssets.length === 1) {
+                                // If it's a single update without slide num, assume it's THE asset.
+                                // But if we have existing assets and this is a generic update?
+                                // Let's simplify: if no slide_num in event OR item, replace list? 
+                                // Or generic add?
+                                // User said: "media url json should have this structure for EACH slide"
+                                // So we expect slide_num.
+                                existingAssets.push(newItem);
+                            }
+                        }
+                    });
+
+                    // If not carousel (no slide nums involved at all), replace
+                    if (!event.slide_num && newAssets.length === 1 && !newAssets[0].slide_num) {
+                        updated.assets = newAssets;
+                    } else {
+                        updated.assets = existingAssets.sort((a, b) => (a.slide_num || 0) - (b.slide_num || 0));
+                    }
+                }
+
+                // Handle Completion Count (optional sync)
+                if (event.status === 'completed' && event.count) {
+                    // Could re-fetch history here to be perfectly synced, 
+                    // but we might have all data from streams.
+                }
+
+                return updated;
+            });
+        });
+    });
 
     // Actions
     const parseErrorMessage = (err: any): string => { // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -131,18 +226,68 @@ export function useStudio(assetId: string, initialType: string) {
             }
 
             // Optimistic Update: API now returns full object
-            const newVersion = await generateAsset(assetId, finalPromptToSend, isCarousel ? stepByStep : false, isCarousel ? targetSlideCount : 1);
+            const newVersion = await generateAsset(
+                assetId,
+                finalPromptToSend,
+                isCarousel ? stepByStep : false,
+                isCarousel ? targetSlideCount : 1,
+                { aspect_ratio: aspectRatio }
+            );
 
+            // Robust State Update Helper
             setVersions(prev => {
-                // Deduplicate: If ID already exists (race condition), don't add again
-                if (prev.some(v => v.id === newVersion.id)) return prev;
-                return [newVersion, ...prev];
+                const combined = [newVersion, ...prev];
+                // Unique by ID
+                return Array.from(new Map(combined.map(v => [v.id, v])).values());
             });
             setSelectedVersionId(newVersion.id);
 
             // Fetch history in background just in case, but no block
             getAssetHistory(assetId).then(list => {
-                setVersions(list); // We might want smarter merge here too, but dedupe on add helps most
+                setVersions(prev => {
+                    // Merge remote list with current state.
+                    // CRITICAL: process/waiting versions might have streamed assets that are newer than DB.
+                    // ALSO: If we have an active version that is NOT in the remote list (optimistic), 
+                    // we must PRESERVE it, otherwise it vanishes until the next polling cycle.
+                    const prevMap = new Map(prev.map(v => [v.id, v]));
+                    const remoteIds = new Set(list.map(v => v.id));
+
+                    // 1. Start with remote list (source of truth for existing)
+                    const merged = list.map(remoteV => {
+                        const localV = prevMap.get(remoteV.id);
+                        if (localV && (localV.status === 'processing' || localV.status === 'waiting_for_approval')) {
+                            // If local has more assets (from stream), keep them.
+                            const localCount = localV.assets?.length || 0;
+                            const remoteCount = remoteV.assets?.length || 0;
+                            if (localCount > remoteCount) {
+                                return { ...remoteV, assets: localV.assets };
+                            }
+                        }
+                        return remoteV;
+                    });
+
+                    // 2. Add back any local-only versions that are likely optimistic (processing/new)
+                    // We only keep them if they are the currently selected one or very recent. 
+                    // For simplicity, we keep any active/processing ones not in remote.
+                    prev.forEach(localV => {
+                        if (!remoteIds.has(localV.id)) {
+                            // It's local only. Is it a ghost or optimistic?
+                            // If it's the one we just created (newVersion), definitely keep it.
+                            if (localV.id === newVersion.id || localV.status === 'processing' || localV.status === 'created') {
+                                // Prepend or Append? Usually new ones are at top.
+                                // If existing list is sorted desc, and this is new, it should be at top.
+                                // Logic: merged is presumably sorted by date desc from backend.
+                                // We'll just unshift it if it's newer than the first key? 
+                                // Actually, let's just push it to a separate list and concat.
+                                // However, simpler to just put it at the very top since it's "latest".
+                            }
+                        }
+                    });
+
+                    // Re-construct clean list
+                    const optimistic = prev.filter(p => !remoteIds.has(p.id) && (p.id === newVersion.id || p.status === 'processing'));
+                    return [...optimistic, ...merged];
+                });
             }).catch(console.warn);
 
         } catch (err) { setError(parseErrorMessage(err)); }
@@ -158,6 +303,7 @@ export function useStudio(assetId: string, initialType: string) {
             setVersions(prev => prev.map(v => v.id === activeVersion.id ? { ...v, status: 'processing' } : v));
         } catch (err) {
             setError(parseErrorMessage(err));
+        } finally {
             setIsGenerating(false);
         }
     };
@@ -195,6 +341,8 @@ export function useStudio(assetId: string, initialType: string) {
         setTargetSlideCount,
         stepByStep,
         setStepByStep,
+        aspectRatio,
+        setAspectRatio,
 
         // Actions
         handlePlan,

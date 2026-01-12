@@ -22,12 +22,14 @@ function CarouselThumbnails({
     totalSlides,
     currentSlide,
     onSelect,
+    onResume,
     status
 }: {
     assets: AssetMediaItem[],
     totalSlides: number,
     currentSlide: number,
     onSelect: (n: number) => void,
+    onResume: () => void,
     status: string
 }) {
     const slides = Array.from({ length: totalSlides });
@@ -48,13 +50,16 @@ function CarouselThumbnails({
                 return (
                     <button
                         key={slideNum}
-                        onClick={() => isGenerated ? onSelect(slideNum) : null}
-                        disabled={!isGenerated}
+                        onClick={() => {
+                            if (isGenerated) onSelect(slideNum);
+                            else if (showReady) onResume();
+                        }}
+                        disabled={!isGenerated && !showReady}
                         className={`
                             relative w-14 h-14 rounded border flex-shrink-0 transition-all overflow-hidden flex items-center justify-center
                             ${isCurrent ? "border-black ring-1 ring-black shadow-md z-10" : "border-gray-200 hover:border-gray-300"}
-                            ${!isGenerated ? "cursor-default bg-gray-50" : "cursor-pointer bg-white"}
-                            ${showReady ? "border-dashed border-gray-400 bg-gray-50" : ""}
+                            ${!isGenerated && !showReady ? "cursor-default bg-gray-50" : "cursor-pointer bg-white"}
+                            ${showReady ? "border-dashed border-gray-400 bg-gray-50 hover:bg-gray-100 hover:border-gray-500" : ""}
                         `}
                     >
                         {isGenerated ? (
@@ -287,18 +292,7 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
                                 </div>
 
                                 {/* Status Banner */}
-                                {activeVersion.status === "waiting_for_approval" && (
-                                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black text-white px-6 py-2 rounded-full shadow-lg flex items-center gap-4 z-20">
-                                        <span className="text-xs font-medium">Reviewing Slide {activeVersion.assets.length}</span>
-                                        <button
-                                            onClick={handleResume}
-                                            disabled={isGenerating}
-                                            className="bg-white text-black text-xs font-bold px-3 py-1 rounded hover:bg-gray-100 transition-colors"
-                                        >
-                                            {isGenerating ? "..." : "Approve & Next →"}
-                                        </button>
-                                    </div>
-                                )}
+                                {/* Status Banner Removed per user request - Resume moved to Thumbnail Play Icon */}
                             </>
                         )}
 
@@ -309,6 +303,7 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
                                 totalSlides={Math.max(activeVersion.assets.length, expectedTotal)}
                                 currentSlide={slideNum}
                                 onSelect={setSlideNum}
+                                onResume={handleResume}
                                 status={activeVersion.status}
                             />
                         )}

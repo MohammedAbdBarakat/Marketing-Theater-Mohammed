@@ -22,7 +22,7 @@ export function useStudio(runId: string, assetId: string, initialType: string) {
     // Carousel Config
     const isCarousel = initialType.toLowerCase().includes("carousel");
     const [slideNum, setSlideNum] = useState(1);
-    const [targetSlideCount, setTargetSlideCountState] = useState(5);
+    const [targetSlideCount, setTargetSlideCountState] = useState(3);
     const [stepByStep, setStepByStep] = useState(true);
 
     // Aspect Ratio Config
@@ -225,8 +225,8 @@ export function useStudio(runId: string, assetId: string, initialType: string) {
                 finalPromptToSend = structuredPrompts.map((p, i) => `[Slide ${i + 1}] ${p}`).join("\n\n");
             }
 
-            // Optimistic Update: API now returns full object
-            const newVersion = await generateAsset(
+            // Optimistic Update: API returns initiation object { version_id, ... }
+            const res: any = await generateAsset(
                 assetId,
                 finalPromptToSend,
                 isCarousel ? stepByStep : false,
@@ -234,23 +234,48 @@ export function useStudio(runId: string, assetId: string, initialType: string) {
                 { aspect_ratio: aspectRatio }
             );
 
+            // Construct proper AssetVersion from response
+            const newVersion: AssetVersion = {
+                id: res.version_id || res.id, // Handle both shapes
+                status: 'processing',
+                createdAt: new Date().toISOString(),
+                assets: [],
+                blueprint: {
+                    image_prompt: finalPromptToSend,
+                    slides: isCarousel && structuredPrompts.length > 0
+                        ? structuredPrompts.map((p, i) => ({ slide_num: i + 1, image_prompt: p }))
+                        : undefined
+                },
+                final_used_prompt: finalPromptToSend
+            };
+
             // Robust State Update Helper
             setVersions(prev => {
+                // Ensure we don't duplicate if it already exists (unlikely for new gen)
                 const combined = [newVersion, ...prev];
                 // Unique by ID
-                return Array.from(new Map(combined.map(v => [v.id, v])).values());
+                const map = new Map();
+                combined.forEach(v => {
+                    if (!map.has(v.id)) map.set(v.id, v);
+                });
+                return Array.from(map.values());
             });
             setSelectedVersionId(newVersion.id);
 
             // Fetch history in background just in case, but no block
             getAssetHistory(assetId).then(list => {
                 setVersions(prev => {
-                    // Merge remote list with current state.
-                    // CRITICAL: process/waiting versions might have streamed assets that are newer than DB.
-                    // ALSO: If we have an active version that is NOT in the remote list (optimistic), 
-                    // we must PRESERVE it, otherwise it vanishes until the next polling cycle.
                     const prevMap = new Map(prev.map(v => [v.id, v]));
                     const remoteIds = new Set(list.map(v => v.id));
+
+                    // Debugging Duplicates
+                    if (process.env.NODE_ENV === 'development') {
+                        console.log("Merge Debug:", {
+                            newVersionId: newVersion.id,
+                            remoteIds: Array.from(remoteIds),
+                            localIds: Array.from(prevMap.keys())
+                        });
+                    }
 
                     // 1. Start with remote list (source of truth for existing)
                     const merged = list.map(remoteV => {
@@ -285,7 +310,13 @@ export function useStudio(runId: string, assetId: string, initialType: string) {
                     });
 
                     // Re-construct clean list
-                    const optimistic = prev.filter(p => !remoteIds.has(p.id) && (p.id === newVersion.id || p.status === 'processing'));
+                    // Re-construct clean list
+                    // Filter optimistic: Keep ONLY if it is NOT in remote AND (it is the new one OR is actively processing)
+                    const optimistic = prev.filter(p => {
+                        const existsRemote = remoteIds.has(p.id);
+                        const isRelevant = p.id === newVersion.id || p.status === 'processing';
+                        return !existsRemote && isRelevant;
+                    });
                     return [...optimistic, ...merged];
                 });
             }).catch(console.warn);
@@ -311,7 +342,10 @@ export function useStudio(runId: string, assetId: string, initialType: string) {
     const handleNewVersion = () => {
         setSelectedVersionId(null);
         setPrompt("");
-        setStructuredPrompts([]);
+        // Reset to default 3 for carousel, or empty for others
+        const defaultSlides = isCarousel ? Array.from({ length: 3 }).map(() => "") : [];
+        setStructuredPrompts(defaultSlides);
+        setTargetSlideCountState(3);
         setError(null);
     };
 

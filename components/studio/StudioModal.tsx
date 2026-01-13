@@ -240,7 +240,50 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
                                                     <span className={`font-medium ${v.id === selectedVersionId ? "text-gray-900" : "text-gray-500 group-hover:text-gray-700"}`}>
                                                         Version {uniqueVersions.length - i}
                                                     </span>
-                                                    <span className="text-[10px] text-gray-400">{new Date(v.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                    <span className="text-[10px] text-gray-400">
+                                                        {(() => {
+                                                            try {
+                                                                if (!v.createdAt) return "";
+                                                                // Raw: "2026-01-13 21:33:23.327721+00"
+                                                                // 1. Replace space with T
+                                                                let safe = v.createdAt.replace(' ', 'T');
+                                                                // 2. Truncate fractional seconds to 3 digits (millis) if > 3
+                                                                //    Matches .123456 -> .123
+                                                                safe = safe.replace(/(\.\d{3})\d+/, '$1');
+                                                                // 3. Fix short timezone "+00" -> "+00:00" if missing minutes
+                                                                //    Matches end of string +00 -> +00:00
+                                                                safe = safe.replace(/([+-]\d{2})$/, '$1:00');
+
+                                                                const d = new Date(safe);
+                                                                if (isNaN(d.getTime())) return "";
+
+                                                                const now = new Date();
+                                                                const diffMs = now.getTime() - d.getTime();
+                                                                const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+                                                                const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+                                                                if (diffDays === 0 && now.getDate() === d.getDate()) {
+                                                                    return `Today ${timeStr}`;
+                                                                } else if (diffDays === 1 || (diffDays === 0 && now.getDate() !== d.getDate())) {
+                                                                    // Covers yesterday even if < 24h but crossed midnight?
+                                                                    // Simple approach: if getDate differs by 1
+                                                                    const yest = new Date(now);
+                                                                    yest.setDate(yest.getDate() - 1);
+                                                                    if (d.getDate() === yest.getDate()) return `Yesterday ${timeStr}`;
+                                                                }
+
+                                                                if (diffDays < 7) {
+                                                                    // Show Weekday
+                                                                    return `${d.toLocaleDateString([], { weekday: 'short' })} ${timeStr}`;
+                                                                }
+
+                                                                // Older -> Date
+                                                                return `${d.toLocaleDateString([], { month: 'numeric', day: 'numeric' })} ${timeStr}`;
+                                                            } catch (e) {
+                                                                return "";
+                                                            }
+                                                        })()}
+                                                    </span>
                                                 </div>
                                                 <div className={`w-2 h-2 rounded-full ${v.status === 'completed' ? 'bg-green-500' :
                                                     v.status === 'failed' ? 'bg-red-500' :

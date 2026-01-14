@@ -42,6 +42,22 @@ export type StrategyInputs = {
   preferences?: { tags?: string[]; ugc?: boolean; constraints?: string };
 };
 
+
+export interface VideoOptions {
+  cameras: string[];
+  lighting: string[];
+  actions: string[];
+  vibes: string[];
+}
+
+export interface VideoOverrides {
+  camera?: string;
+  lighting?: string;
+  action?: string;
+  vibe?: string;
+}
+
+
 // PhaseResult moved to types/assets.ts
 
 export type CalendarEntry = {
@@ -86,13 +102,36 @@ export async function getAssetHistory(assetId: string): Promise<AssetVersion[]> 
   return (store[assetId] || []).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
-export async function previewPlan(assetId: string, slideCount?: number): Promise<{ resolved_prompt: string; blueprint?: any }> {
+export async function getVideoOptions(): Promise<VideoOptions> {
   if (IS_REMOTE) {
-    return http<{ resolved_prompt: string; blueprint?: any }>(`/api/assets/${assetId}/plan-preview`, {
+    return http<VideoOptions>("/api/video/options");
+  }
+  // Mock fallback
+  return {
+    cameras: ["Drone Orbit", "Macro Dolly", "Handheld"],
+    lighting: ["Golden Hour", "Neon Cyberpunk", "Studio Clean"],
+    actions: ["Slow Motion", "Speed Ramp", "Timelapse"],
+    vibes: ["Luxury", "Tech", "High Energy"]
+  };
+}
+
+// 3. Update previewPlan to accept overrides
+export async function previewPlan(
+  assetId: string, 
+  slideCount?: number, 
+  videoOverrides?: VideoOverrides // <--- NEW PARAMETER
+): Promise<{ resolved_prompt: string; blueprint?: any }> {
+  if (IS_REMOTE) {
+    return http(`/api/assets/${assetId}/plan-preview`, {
       method: "POST",
-      body: JSON.stringify({ slide_count: slideCount })
+      // Send the overrides to the backend
+      body: JSON.stringify({ 
+        slide_count: slideCount,
+        video_overrides: videoOverrides 
+      })
     });
   }
+
 
   // Mock Logic
   return new Promise(resolve => setTimeout(() => {

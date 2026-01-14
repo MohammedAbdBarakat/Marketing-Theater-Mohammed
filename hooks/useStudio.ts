@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { AssetVersion, getAssetHistory, pollAssetVersion, previewPlan, generateAsset, resumeGeneration } from "../lib/api";
+import { AssetVersion, getAssetHistory, pollAssetVersion, previewPlan, generateAsset, resumeGeneration, VideoOverrides } from "../lib/api";
 
 export function useStudio(assetId: string, initialType: string) {
     // Data State
@@ -7,6 +7,7 @@ export function useStudio(assetId: string, initialType: string) {
     const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
     const [isLoadingHistory, setIsLoadingHistory] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [videoOverrides, setVideoOverrides] = useState<VideoOverrides>({});
 
     // Workflow State
     const [prompt, setPrompt] = useState("");
@@ -103,7 +104,7 @@ export function useStudio(assetId: string, initialType: string) {
         setIsPlanning(true);
         setError(null);
         try {
-            const data = await previewPlan(assetId, isCarousel ? targetSlideCount : undefined);
+            const data = await previewPlan(assetId, isCarousel ? targetSlideCount : undefined, videoOverrides);
 
             if (isCarousel && data.blueprint?.slides) {
                 // Structured Handling
@@ -177,6 +178,8 @@ export function useStudio(assetId: string, initialType: string) {
         setSelectedVersionId,
         isLoadingHistory,
         error,
+        videoOverrides,
+        setVideoOverrides,
 
         // Workflow
         prompt,

@@ -5,6 +5,7 @@ import { AssetMediaItem } from "../../lib/api";
 import { useStudio } from "../../hooks/useStudio";
 import { AssetPreview } from "./AssetPreview";
 import { PromptBar } from "./PromptBar";
+import { VideoMixer } from "./VideoMixer";
 
 interface StudioModalProps {
     assetId: string;
@@ -97,8 +98,30 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
         handlePlan,
         handleGenerate,
         handleResume,
-        handleNewVersion
+        handleNewVersion,
+        videoOverrides,
+        setVideoOverrides,
     } = useStudio(assetId, initialContext.type);
+
+    const isVideo = initialContext.type.toLowerCase() === "video";
+    const [viewMode, setViewMode] = useState<"edited" | "raw">("edited");
+
+    // Find the correct asset URL based on toggle
+    // The backend returns a list. Convention: Slide 1 = Edited, Slide 2 = Raw (or labeled)
+    let displayAssets = activeVersion?.assets || [];
+
+    if (isVideo && activeVersion?.status === "completed") {
+        const editedAsset = activeVersion.assets.find(a => a.slide_num === 1);
+        const rawAsset = activeVersion.assets.find(a => a.slide_num === 2);
+        
+        // If user wants raw and it exists, show it. Otherwise default to edited/first.
+        if (viewMode === "raw" && rawAsset) {
+            displayAssets = [rawAsset];
+        } else if (editedAsset) {
+            displayAssets = [editedAsset];
+        }
+    }
+
 
     // Layout (Resizable)
     const [leftWidth, setLeftWidth] = useState(30);
@@ -241,6 +264,25 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
 
                     {/* Main Preview Area */}
                     <div className="flex-1 overflow-hidden relative bg-gray-50 flex flex-col">
+
+                        {/* ✅ NEW: Video Toggle Controls (Floating on top) */}
+                        {isVideo && activeVersion?.status === "completed" && activeVersion.assets.length > 1 && (
+                            <div className="absolute top-4 right-4 z-20 bg-white/90 backdrop-blur border border-gray-200 p-1 rounded-lg flex gap-1 shadow-sm">
+                                <button
+                                    onClick={() => setViewMode("edited")}
+                                    className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${viewMode === "edited" ? "bg-black text-white" : "hover:bg-gray-100 text-gray-600"}`}
+                                >
+                                    Edited
+                                </button>
+                                <button
+                                    onClick={() => setViewMode("raw")}
+                                    className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${viewMode === "raw" ? "bg-black text-white" : "hover:bg-gray-100 text-gray-600"}`}
+                                >
+                                    Raw Source
+                                </button>
+                            </div>
+                        )}
+
                         {!activeVersion ? (
                             <div className="flex-1 flex flex-col items-center justify-center text-center p-8 text-gray-400">
                                 <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4 text-2xl grayscale opacity-50">✨</div>
@@ -256,7 +298,7 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
                             <>
                                 <div className="flex-1 relative overflow-hidden">
                                     <AssetPreview
-                                        assets={activeVersion.assets}
+                                        assets={displayAssets}
                                         selectedSlideInfo={activeVersion.assets.length > 1 ? { num: slideNum, total: activeVersion.assets.length } : undefined}
                                         onSelectSlide={setSlideNum}
                                         hideThumbnails={true} // Replaced redundancy
@@ -293,6 +335,15 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
 
                     {/* Bottom Input Area */}
                     <div className="flex-shrink-0 z-20">
+                          {/* ✅ NEW: Video Mixologist Panel (Only show for Video) */}
+                        {isVideo && (
+                            <VideoMixer 
+                                selection={videoOverrides} 
+                                onChange={setVideoOverrides} 
+                                disabled={isGenerating || isPlanning}
+                            />
+                        )}
+
                         <PromptBar
                             prompt={prompt}
                             onChange={setPrompt}

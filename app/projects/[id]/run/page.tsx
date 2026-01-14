@@ -105,6 +105,25 @@ export default function RunPage() {
               });
               if (latest.results["3"]) run.setCurrentPhase(4);
             }
+
+            // Hydrate Theater from chat_history if available
+            // @ts-ignore
+            if ((latest as any).chat_history) {
+              const newTheater: Record<number, any[]> = { 1: [], 2: [], 3: [], 4: [], 5: [] };
+              // @ts-ignore
+              Object.entries((latest as any).chat_history).forEach(([phaseStr, messages]: [string, any[]]) => {
+                const p = parseInt(phaseStr);
+                if (!isNaN(p)) {
+                  newTheater[p] = messages.map((m: any, idx: number) => ({
+                    phase: p,
+                    speaker: m.name || m.role,
+                    text: m.content,
+                    ts: Date.now() + idx // Mock TS to maintain order if missing
+                  }));
+                }
+              });
+              run.setTheater(newTheater);
+            }
           }
         }
 
@@ -185,6 +204,8 @@ export default function RunPage() {
               // 1. Handle Status Update (Priority Override)
               if (ev.type === "status_update") {
                 authoritativeStatus = ev.status;
+                run.setStatus(ev.status); // Update global store!
+
                 // If we are NOT waiting for selection, ensure panel is hidden
                 if (ev.status !== "waiting_for_selection") {
                   setStrategyPrompt(null);
@@ -265,7 +286,7 @@ export default function RunPage() {
         <PhaseStepper phases={run.phases} current={run.currentPhase || 1} />
         <ConnectionStatus status={conn} />
       </div>
-      <MeetingTheater logs={currentLogs} />
+      <MeetingTheater logs={run.theater} currentPhase={run.currentPhase || 1} isDone={run.status === "done"} />
       <div className="grid gap-4 md:grid-cols-3">
         {[1, 2, 3].map((p) => {
           const res = run.results[p as 1 | 2 | 3 | 4];
@@ -274,11 +295,19 @@ export default function RunPage() {
         })}
       </div>
 
-      {strategyPrompt && (
+      {/* DEBUG LOGS */}
+      {console.log("RENDER DEBUG:", {
+        status: run.status,
+        hasStrategyPrompt: !!strategyPrompt,
+        candidates: run.results[1]?.candidates,
+        hasCandidates: !!(run.results[1]?.candidates && run.results[1].candidates.length > 0)
+      })}
+
+      {(strategyPrompt || (run.status === "waiting_for_selection" && run.results[1]?.candidates)) && (
         <StrategySelectModal
           open
-          items={strategyPrompt.items}
-          recommendedId={strategyPrompt.recommendedId}
+          items={strategyPrompt?.items || run.results[1]?.candidates || []}
+          recommendedId={strategyPrompt?.recommendedId}
           brief={project.strategy}
           results={run.results}
           onSelect={confirmStrategy}

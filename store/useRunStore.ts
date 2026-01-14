@@ -1,7 +1,7 @@
 "use client";
 import { create } from "zustand";
 
-export type PhaseStatus = "idle" | "running" | "done" | "error";
+export type PhaseStatus = "idle" | "running" | "done" | "error" | "waiting_for_selection";
 
 export type TheaterLog = { phase: number; speaker: string; text: string; ts: number };
 
@@ -43,6 +43,7 @@ export type RunState = {
   setSelectedStrategy: (id: string) => void;
   addCalendarEntries: (date: string, entries: CalendarEntry[]) => void;
   setCalendar: (calendar: Record<string, CalendarEntry[]>) => void;
+  setTheater: (theater: Record<number, TheaterLog[]>) => void;
   reset: () => void;
 };
 
@@ -73,6 +74,7 @@ export const useRunStore = create<RunState>()((set, get) => ({
       const next = [...existing, log].slice(-max);
       return { theater: { ...st.theater, [log.phase as 1 | 2 | 3 | 4 | 5]: next } };
     }),
+  setTheater: (theater) => set({ theater: { ...theater } as any }),
   setResult: (result) =>
     set((st) => ({ results: { ...st.results, [result.phase]: result } })),
   setSelectedStrategy: (id) => set({ selectedStrategyId: id }),

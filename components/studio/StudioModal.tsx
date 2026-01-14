@@ -4,7 +4,7 @@ import { useRef, useState, useEffect } from "react";
 import { AssetMediaItem } from "../../lib/api";
 import { useStudio } from "../../hooks/useStudio";
 import { AssetPreview } from "./AssetPreview";
-import { PromptBar } from "./PromptBar";
+import { PromptBar, PromptMode } from "./PromptBar";
 
 interface StudioModalProps {
     assetId: string;
@@ -117,6 +117,9 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
     const [leftWidth, setLeftWidth] = useState(30);
     const containerRef = useRef<HTMLDivElement>(null);
     const isDragging = useRef(false);
+
+    // Mode State
+    const [inputMode, setInputMode] = useState<PromptMode>("autopilot");
 
     const expectedTotal = activeVersion?.blueprint?.slides?.length || (isCarousel ? targetSlideCount : 1);
 
@@ -364,6 +367,8 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
                             isPlanning={isPlanning}
                             isGenerating={isGenerating || (activeVersion?.status === "processing")}
                             disabled={isPolling}
+                            inputMode={inputMode}
+                            onInputModeChange={setInputMode}
                             controls={(
                                 <>
                                     {/* Aspect Ratio */}

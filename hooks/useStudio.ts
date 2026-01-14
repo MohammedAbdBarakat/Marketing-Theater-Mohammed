@@ -107,7 +107,15 @@ export function useStudio(runId: string, assetId: string, initialType: string) {
                 if (v.id !== event.version_id) return v;
 
                 // Found the version, update it
-                const updated = { ...v, status: event.status as any };
+                let newStatus = event.status as any;
+
+                // FIX: If we receive a slide URL in step-by-step mode, we are effectively waiting for approval,
+                // even if the backend reports "processing" (waiting for the resume signal).
+                if (event.url && stepByStep && newStatus === 'processing') {
+                    newStatus = 'waiting_for_approval';
+                }
+
+                const updated = { ...v, status: newStatus };
 
                 // Handle Slide/URL Update
                 if (event.url) {

@@ -115,6 +115,22 @@ export async function previewPlan(assetId: string, slideCount?: number): Promise
   }, 1000));
 }
 
+export async function editAsset(assetId: string, payload: EditAssetRequest): Promise<{ task_id: string; new_version_id: string }> {
+  if (IS_REMOTE) {
+    return http<{ task_id: string; new_version_id: string }>(`/api/assets/${assetId}/edit`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+  }
+
+  // Mock Logic
+  return new Promise(resolve => {
+    setTimeout(() => {
+      resolve({ task_id: `mock-task-edit-${nanoid()}`, new_version_id: `mock-ver-edit-${nanoid()}` });
+    }, 800);
+  });
+}
+
 export async function generateAsset(
   assetId: string,
   finalPrompt: string,

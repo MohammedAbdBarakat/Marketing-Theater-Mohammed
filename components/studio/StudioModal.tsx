@@ -16,6 +16,77 @@ interface StudioModalProps {
 // Minimal Helper for Errors
 
 
+// Magic Edit Popover
+function MagicEditPopover({
+    isOpen,
+    onClose,
+    onGenerate,
+    slideIndex
+}: {
+    isOpen: boolean;
+    onClose: () => void;
+    onGenerate: (prompt: string) => void;
+    slideIndex: number;
+}) {
+    const [val, setVal] = useState("");
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        if (isOpen) {
+            setTimeout(() => inputRef.current?.focus(), 50);
+        } else {
+            setVal("");
+        }
+    }, [isOpen]);
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-50 w-64">
+            <div className="bg-white rounded-lg shadow-xl border border-gray-200 p-3 animate-in fade-in slide-in-from-bottom-2 duration-200">
+                <div className="flex justify-between items-center mb-2">
+                    <span className="text-xs font-bold text-gray-700 flex items-center gap-1">
+                        <svg className="w-3 h-3 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                        Refine Slide {slideIndex}
+                    </span>
+                    <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+                <input
+                    ref={inputRef}
+                    className="w-full text-xs border border-gray-300 rounded px-2 py-1.5 focus:ring-1 focus:ring-purple-500 focus:border-purple-500 mb-2"
+                    placeholder="e.g. Make the sky blue..."
+                    value={val}
+                    onChange={(e) => setVal(e.target.value)}
+                    onKeyDown={(e) => {
+                        if (e.key === "Enter" && val.trim()) {
+                            onGenerate(val);
+                            onClose();
+                        }
+                    }}
+                />
+                <button
+                    disabled={!val.trim()}
+                    onClick={() => {
+                        onGenerate(val);
+                        onClose();
+                    }}
+                    className="w-full bg-purple-600 text-white text-xs font-medium py-1.5 rounded hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                    Magic Modify
+                </button>
+            </div>
+            {/* Arrow */}
+            <div className="absolute left-1/2 -translate-x-1/2 -bottom-1.5 w-3 h-3 bg-white border-b border-r border-gray-200 rotate-45" />
+        </div>
+    );
+}
+
 // Clean Thumbnail Component
 function CarouselThumbnails({
     assets,
@@ -23,6 +94,7 @@ function CarouselThumbnails({
     currentSlide,
     onSelect,
     onResume,
+    onEdit, // New Prop
     status
 }: {
     assets: AssetMediaItem[],
@@ -30,12 +102,14 @@ function CarouselThumbnails({
     currentSlide: number,
     onSelect: (n: number) => void,
     onResume: () => void,
+    onEdit: (n: number, prompt: string) => void, // New
     status: string
 }) {
     const slides = Array.from({ length: totalSlides });
+    const [editingSlide, setEditingSlide] = useState<number | null>(null);
 
     return (
-        <div className="bg-white border-t border-gray-100 px-4 py-2 flex gap-2 overflow-x-auto items-center justify-center min-h-[80px]">
+        <div className="bg-white border-t border-gray-100 px-4 py-2 flex gap-2 overflow-x-auto items-center justify-center min-h-[90px]">
             {slides.map((_, i) => {
                 const slideNum = i + 1;
                 const asset = assets.find(a => a.slide_num === slideNum);
@@ -44,38 +118,64 @@ function CarouselThumbnails({
                 const isCurrent = slideNum === currentSlide;
 
                 const isNextSlot = !isGenerated && slideNum === (assets.length + 1);
-                const showSpinner = isNextSlot && status === 'processing';
+                const showSpinner = (isNextSlot && status === 'processing');
                 const showReady = isNextSlot && status === 'waiting_for_approval';
 
                 return (
-                    <button
-                        key={slideNum}
-                        onClick={() => {
-                            if (isGenerated) onSelect(slideNum);
-                            else if (showReady) onResume();
-                        }}
-                        disabled={!isGenerated && !showReady}
-                        className={`
-                            relative w-14 h-14 rounded border flex-shrink-0 transition-all overflow-hidden flex items-center justify-center
-                            ${isCurrent ? "border-black ring-1 ring-black shadow-md z-10" : "border-gray-200 hover:border-gray-300"}
-                            ${!isGenerated && !showReady ? "cursor-default bg-gray-50" : "cursor-pointer bg-white"}
-                            ${showReady ? "border-dashed border-gray-400 bg-gray-50 hover:bg-gray-100 hover:border-gray-500" : ""}
-                        `}
-                    >
-                        {isGenerated ? (
-                            <img src={effectiveAsset.url} alt={`Slide ${slideNum}`} className="w-full h-full object-cover" />
-                        ) : showSpinner ? (
-                            <div className="w-4 h-4 border-2 border-gray-300 border-t-black rounded-full animate-spin" />
-                        ) : showReady ? (
-                            <div className="text-gray-400">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-                            </div>
-                        ) : (
-                            <div className="text-[10px] text-gray-300 font-bold font-mono">
-                                {slideNum}
-                            </div>
-                        )}
-                    </button>
+                    <div key={slideNum} className="relative group">
+                        {/* Magic Edit Popover Anchor */}
+                        <MagicEditPopover
+                            isOpen={editingSlide === slideNum}
+                            onClose={() => setEditingSlide(null)}
+                            slideIndex={slideNum}
+                            onGenerate={(prompt) => onEdit(slideNum, prompt)}
+                        />
+
+                        <button
+                            onClick={() => {
+                                if (isGenerated) onSelect(slideNum);
+                                else if (showReady) onResume();
+                            }}
+                            disabled={!isGenerated && !showReady}
+                            className={`
+                                relative w-16 h-16 rounded-lg border-2 flex-shrink-0 transition-all overflow-hidden flex items-center justify-center
+                                ${isCurrent ? "border-purple-600 ring-1 ring-purple-100 shadow-md z-10 scale-105" : "border-gray-200 hover:border-gray-300"}
+                                ${!isGenerated && !showReady ? "cursor-default bg-gray-50" : "cursor-pointer bg-white"}
+                                ${showReady ? "border-dashed border-gray-400 bg-gray-50 hover:bg-gray-100 hover:border-gray-500" : ""}
+                            `}
+                        >
+                            {isGenerated ? (
+                                <>
+                                    <img src={effectiveAsset.url} alt={`Slide ${slideNum}`} className="w-full h-full object-cover" />
+                                    {/* Magic Wand Trigger (Hover Only) */}
+                                    <div
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setEditingSlide(editingSlide === slideNum ? null : slideNum);
+                                        }}
+                                        className={`absolute top-1 right-1 p-1 rounded-full bg-black/60 hover:bg-purple-600 text-white backdrop-blur-sm transition-all duration-200
+                                            ${editingSlide === slideNum ? 'opacity-100 scale-100' : 'opacity-0 scale-75 group-hover:opacity-100 group-hover:scale-100'}
+                                        `}
+                                        title="Magic Edit"
+                                    >
+                                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                        </svg>
+                                    </div>
+                                </>
+                            ) : showSpinner ? (
+                                <div className="w-5 h-5 border-2 border-gray-300 border-t-purple-600 rounded-full animate-spin" />
+                            ) : showReady ? (
+                                <div className="text-gray-400 flex flex-col items-center">
+                                    <svg className="w-5 h-5 mb-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                                </div>
+                            ) : (
+                                <div className="text-xs text-gray-300 font-bold font-mono">
+                                    {slideNum}
+                                </div>
+                            )}
+                        </button>
+                    </div>
                 );
             })}
         </div>
@@ -108,9 +208,10 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
         aspectRatio,
         setAspectRatio,
         handlePlan,
-        handleGenerate,
-        handleResume,
-        handleNewVersion
+        handleGenerate: generate,
+        handleResume: resume,
+        handleNewVersion,
+        editSlide // ✨ Magic Edit
     } = useStudio(runId, assetId, initialContext.type);
 
     // Layout (Resizable)
@@ -342,14 +443,15 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
                             </>
                         )}
 
-                        {/* Thumbnails (Overlay or Bottom) */}
+                        {/* Thumbnails (Bottom of Preview) */}
                         {isCarousel && activeVersion && (
                             <CarouselThumbnails
-                                assets={activeVersion.assets}
-                                totalSlides={Math.max(activeVersion.assets.length, expectedTotal)}
+                                assets={(activeVersion as any).media_url || activeVersion.assets || []}
+                                totalSlides={5}
                                 currentSlide={slideNum}
                                 onSelect={setSlideNum}
-                                onResume={handleResume}
+                                onResume={resume}
+                                onEdit={editSlide} // ✨ Magic Edit
                                 status={activeVersion.status}
                             />
                         )}
@@ -363,7 +465,7 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
                             structuredPrompts={structuredPrompts}
                             onStructuredChange={setStructuredPrompts}
                             onPlan={handlePlan}
-                            onGenerate={handleGenerate}
+                            onGenerate={generate}
                             isPlanning={isPlanning}
                             isGenerating={isGenerating || (activeVersion?.status === "processing")}
                             disabled={isPolling}

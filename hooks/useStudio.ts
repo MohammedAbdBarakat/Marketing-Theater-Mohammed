@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { IS_REMOTE } from "../lib/config";
 import { useRunStream } from "./useRunStream";
-import { AssetVersion, AssetUpdateEvent, getAssetHistory, pollAssetVersion, previewPlan, generateAsset, resumeGeneration } from "../lib/api";
+import { AssetVersion, AssetUpdateEvent, getAssetHistory, pollAssetVersion, previewPlan, generateAsset, resumeGeneration, editAsset } from "../lib/api";
 
 export function useStudio(runId: string, assetId: string, initialType: string) {
     // Data State
@@ -357,6 +357,27 @@ export function useStudio(runId: string, assetId: string, initialType: string) {
         setError(null);
     };
 
+    const editSlide = async (slideIndex: number, editPrompt: string) => {
+        if (!activeVersion) return;
+        setIsGenerating(true);
+        setError(null);
+
+        try {
+            await editAsset(assetId, {
+                sourceVersionId: activeVersion.id,
+                slide_num: slideIndex,
+                prompt: editPrompt
+            });
+            // Ideally toast here, but hook logic remains pure-ish. 
+            // The component can observe 'isGenerating' or we can return promise.
+            // For now, optimistically assume success triggers polling/stream.
+        } catch (err: any) {
+            console.error(err);
+            setError(err.message || "Edit failed");
+            setIsGenerating(false);
+        }
+    };
+
     return {
         // State
         versions,
@@ -390,6 +411,7 @@ export function useStudio(runId: string, assetId: string, initialType: string) {
         handlePlan,
         handleGenerate,
         handleResume,
-        handleNewVersion
+        handleNewVersion,
+        editSlide
     };
 }

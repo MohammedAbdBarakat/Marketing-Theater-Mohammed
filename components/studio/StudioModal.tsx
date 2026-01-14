@@ -321,7 +321,7 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
                                 <h3 className="text-gray-900 font-medium mb-1">Canvas Empty</h3>
                                 <p className="text-sm max-w-xs mx-auto">Use the controls below to plan or generate your asset.</p>
                             </div>
-                        ) : activeVersion.status === "processing" || activeVersion.status === "created" ? (
+                        ) : (activeVersion.status === "processing" || activeVersion.status === "created") && activeVersion.assets.length === 0 ? (
                             <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
                                 <div className="animate-spin rounded-full h-12 w-12 border-[3px] border-gray-200 border-t-black mb-6" />
                                 <h3 className="text-gray-900 font-medium animate-pulse">Designing...</h3>

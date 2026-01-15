@@ -75,6 +75,32 @@ const LS_ASSET_VERSIONS = "sim:assetVersions";
 
 // ... (keep read/write helpers)
 
+// --- Video Types ---
+export type VideoOverrides = {
+  camera?: string;
+  lighting?: string;
+  action?: string;
+};
+
+export type VideoOptions = {
+  cameras: string[];
+  lighting: string[];
+  actions: string[];
+};
+
+export async function getVideoOptions(): Promise<VideoOptions> {
+  // Mocking simple options
+  return new Promise(resolve => {
+    setTimeout(() => {
+      resolve({
+        cameras: ["Close Up", "Wide Angle", "Drone Shot", "Handheld", "Dolly Zoom"],
+        lighting: ["Cinematic", "Natural", "Neon", "Studio", "Golden Hour"],
+        actions: ["Slow Motion", "Time Lapse", "Tracking", "Pan", "Zoom In"]
+      });
+    }, 500);
+  });
+}
+
 // --- Studio Endpoints ---
 
 export async function getAssetHistory(assetId: string): Promise<AssetVersion[]> {
@@ -86,11 +112,11 @@ export async function getAssetHistory(assetId: string): Promise<AssetVersion[]> 
   return (store[assetId] || []).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
-export async function previewPlan(assetId: string, slideCount?: number): Promise<{ resolved_prompt: string; blueprint?: any }> {
+export async function previewPlan(assetId: string, slideCount?: number, overrides?: VideoOverrides): Promise<{ resolved_prompt: string; blueprint?: any }> {
   if (IS_REMOTE) {
     return http<{ resolved_prompt: string; blueprint?: any }>(`/api/assets/${assetId}/plan-preview`, {
       method: "POST",
-      body: JSON.stringify({ slide_count: slideCount })
+      body: JSON.stringify({ slide_count: slideCount, blueprint_overrides: overrides })
     });
   }
 

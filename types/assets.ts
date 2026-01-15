@@ -3,6 +3,7 @@ export type AssetMediaItem = {
     url: string;
     slide_num?: number;
     thumbnail?: string;
+    rawUrl?: string;
 };
 
 export type AssetVersion = {

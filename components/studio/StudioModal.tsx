@@ -5,6 +5,7 @@ import { AssetMediaItem } from "../../lib/api";
 import { useStudio } from "../../hooks/useStudio";
 import { AssetPreview } from "./AssetPreview";
 import { PromptBar, PromptMode } from "./PromptBar";
+import { VideoMixer } from "./VideoMixer";
 
 interface StudioModalProps {
     assetId: string;
@@ -114,8 +115,14 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
         handleGenerate: generate,
         handleResume: resume,
         handleNewVersion,
-        editSlide // ✨
+        editSlide, // ✨
+        videoOverrides, // ✨
+        setVideoOverrides // ✨
     } = useStudio(runId, assetId, initialContext.type);
+
+    const isVideo = initialContext.type === 'video';
+    const [viewMode, setViewMode] = useState<"edited" | "raw">("edited"); // ✨ Video View Mode
+
 
     // Layout (Resizable)
     const [leftWidth, setLeftWidth] = useState(30);
@@ -151,6 +158,11 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
             document.removeEventListener('mouseup', up);
         };
     }, []);
+
+    // ✨ Compute Display Assets (Raw vs Edited)
+    const displayAssets = viewMode === "raw"
+        ? (activeVersion?.assets.map(a => ({ ...a, url: a.rawUrl || a.url })) || [])
+        : (activeVersion?.assets || []);
 
     // --- Render ---
 
@@ -344,7 +356,7 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
                             <>
                                 <div className="flex-1 relative overflow-hidden">
                                     <AssetPreview
-                                        assets={activeVersion.assets}
+                                        assets={displayAssets}
                                         selectedSlideInfo={activeVersion.assets.length > 1 ? { num: slideNum, total: activeVersion.assets.length } : undefined}
                                         onSelectSlide={setSlideNum}
                                         hideThumbnails={true} // Replaced redundancy
@@ -370,6 +382,24 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
                                 status={activeVersion.status}
                             />
                         )}
+
+                        {/* ✅ NEW: Video Toggle Controls (Floating on top) */}
+                        {isVideo && activeVersion?.status === "completed" && activeVersion.assets.length > 1 && (
+                            <div className="absolute top-4 right-4 z-20 bg-white/90 backdrop-blur border border-gray-200 p-1 rounded-lg flex gap-1 shadow-sm">
+                                <button
+                                    onClick={() => setViewMode("edited")}
+                                    className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${viewMode === "edited" ? "bg-black text-white" : "hover:bg-gray-100 text-gray-600"}`}
+                                >
+                                    Edited
+                                </button>
+                                <button
+                                    onClick={() => setViewMode("raw")}
+                                    className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${viewMode === "raw" ? "bg-black text-white" : "hover:bg-gray-100 text-gray-600"}`}
+                                >
+                                    Raw Source
+                                </button>
+                            </div>
+                        )}
                     </div>
 
                     {/* ✨ Vertical Resizer */}
@@ -383,6 +413,14 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
 
                     {/* Bottom Input Area */}
                     <div className="flex-1 min-h-0 z-20 bg-white">
+                        {/* ✅ NEW: Video Mixologist Panel (Only show for Video) */}
+                        {isVideo && (
+                            <VideoMixer
+                                selection={videoOverrides}
+                                onChange={setVideoOverrides}
+                                disabled={isGenerating || isPlanning}
+                            />
+                        )}
                         <PromptBar
                             prompt={prompt}
                             onChange={setPrompt}

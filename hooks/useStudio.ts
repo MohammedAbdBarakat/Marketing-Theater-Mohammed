@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { IS_REMOTE } from "../lib/config";
 import { useRunStream } from "./useRunStream";
-import { AssetVersion, AssetUpdateEvent, getAssetHistory, pollAssetVersion, previewPlan, generateAsset, resumeGeneration, editAsset } from "../lib/api";
+import { AssetVersion, AssetUpdateEvent, getAssetHistory, pollAssetVersion, previewPlan, generateAsset, resumeGeneration, editAsset, VideoOverrides } from "../lib/api";
 
 export function useStudio(runId: string, assetId: string, initialType: string) {
     // Data State
@@ -9,6 +9,7 @@ export function useStudio(runId: string, assetId: string, initialType: string) {
     const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
     const [isLoadingHistory, setIsLoadingHistory] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [videoOverrides, setVideoOverrides] = useState<VideoOverrides>({});
 
     // Workflow State
     const [prompt, setPrompt] = useState("");
@@ -206,7 +207,7 @@ export function useStudio(runId: string, assetId: string, initialType: string) {
         setIsPlanning(true);
         setError(null);
         try {
-            const data = await previewPlan(assetId, isCarousel ? targetSlideCount : undefined);
+            const data = await previewPlan(assetId, isCarousel ? targetSlideCount : undefined, videoOverrides); // Pass partial overrides if we supported them
 
             if (isCarousel && data.blueprint?.slides) {
                 // Structured Handling
@@ -386,6 +387,8 @@ export function useStudio(runId: string, assetId: string, initialType: string) {
         setSelectedVersionId,
         isLoadingHistory,
         error,
+        videoOverrides,
+        setVideoOverrides,
 
         // Workflow
         prompt,

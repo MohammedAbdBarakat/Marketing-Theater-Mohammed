@@ -8,7 +8,6 @@ export function useStudio(assetId: string, initialType: string) {
     const [isLoadingHistory, setIsLoadingHistory] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [videoOverrides, setVideoOverrides] = useState<VideoOverrides>({});
-
     // Workflow State
     const [prompt, setPrompt] = useState("");
     const [structuredPrompts, setStructuredPrompts] = useState<string[]>(

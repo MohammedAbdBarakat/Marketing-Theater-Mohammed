@@ -30,6 +30,7 @@ function CarouselThumbnails({
     onSelect: (n: number) => void,
     status: string
 }) {
+    // FIX: Ensure the array mapping uses unique keys
     const slides = Array.from({ length: totalSlides });
 
     return (
@@ -45,7 +46,7 @@ function CarouselThumbnails({
 
                 return (
                     <button
-                        key={slideNum}
+                        key={`thumb-${slideNum}`} // <--- FIX: Ensure unique string key
                         onClick={() => isGenerated ? onSelect(slideNum) : null}
                         disabled={!isGenerated}
                         className={`
@@ -354,6 +355,9 @@ export function StudioModal({ assetId, initialContext, onClose }: StudioModalPro
                             isPlanning={isPlanning}
                             isGenerating={isGenerating || (activeVersion?.status === "processing")}
                             disabled={isPolling}
+                            
+                            
+                            
                             controls={isCarousel ? (
                                 <>
                                     <div className="flex items-center gap-2 border-r border-gray-200 pr-4 mr-2">

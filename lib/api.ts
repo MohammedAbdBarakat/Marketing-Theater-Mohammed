@@ -104,9 +104,22 @@ export async function getAssetHistory(assetId: string): Promise<AssetVersion[]> 
 
 export async function getVideoOptions(): Promise<VideoOptions> {
   if (IS_REMOTE) {
-    return http<VideoOptions>("/api/video/options");
+    try {
+      const data = await http<VideoOptions>("/api/video/options");
+      // Safety check: ensure arrays exist
+      return {
+        cameras: data.cameras || [],
+        lighting: data.lighting || [],
+        actions: data.actions || [],
+        vibes: data.vibes || []
+      };
+    } catch (e) {
+      console.error("Failed to load video options", e);
+      return { cameras: [], lighting: [], actions: [], vibes: [] };
+    }
   }
-  // Mock fallback
+  
+  // Mock fallback (Keep existing)
   return {
     cameras: ["Drone Orbit", "Macro Dolly", "Handheld"],
     lighting: ["Golden Hour", "Neon Cyberpunk", "Studio Clean"],
@@ -119,7 +132,7 @@ export async function getVideoOptions(): Promise<VideoOptions> {
 export async function previewPlan(
   assetId: string, 
   slideCount?: number, 
-  videoOverrides?: VideoOverrides // <--- NEW PARAMETER
+  videoOverrides?: VideoOverrides,
 ): Promise<{ resolved_prompt: string; blueprint?: any }> {
   if (IS_REMOTE) {
     return http(`/api/assets/${assetId}/plan-preview`, {
@@ -127,7 +140,7 @@ export async function previewPlan(
       // Send the overrides to the backend
       body: JSON.stringify({ 
         slide_count: slideCount,
-        video_overrides: videoOverrides 
+        blueprint_overrides: videoOverrides,
       })
     });
   }

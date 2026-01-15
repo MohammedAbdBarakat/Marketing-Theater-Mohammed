@@ -22,7 +22,6 @@ function CarouselPromptList({
     onChange: (vals: string[]) => void;
     disabled?: boolean;
 }) {
-    // Scroll to bottom on mount/update to show latest slides if many
     const bottomRef = useRef<HTMLDivElement>(null);
     useEffect(() => {
         if (prompts.length > 0) bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -65,7 +64,7 @@ export function PromptBar({
     isPlanning,
     isGenerating,
     disabled,
-    controls
+    controls,
 }: PromptBarProps) {
     const isStructuredMode = structuredPrompts && structuredPrompts.length > 0 && onStructuredChange;
 
@@ -73,14 +72,17 @@ export function PromptBar({
         ? structuredPrompts.some(s => s.trim().length > 0)
         : (prompt || "").trim().length > 0;
 
+
     return (
         <div className="border-t border-gray-100 bg-white p-4 space-y-3 z-30 relative shadow-[-1px_-5px_20px_rgba(0,0,0,0.03)]">
-            {/* Controls Row (if present) */}
-            {controls && (
-                <div className="flex items-center gap-4 px-1">
+            
+            {/* --- NEW TOOLBAR ROW (Ratio + Controls) --- */}
+            <div className="flex items-center justify-between px-1">
+                <div className="flex items-center gap-4">
+                    {/* 2. Existing Controls (Slide Count, Step-by-step) */}
                     {controls}
                 </div>
-            )}
+            </div>
 
             {/* Input Area */}
             <div className={`relative group ${isStructuredMode ? 'bg-white' : ''}`}>
@@ -100,7 +102,7 @@ export function PromptBar({
                         <textarea
                             value={prompt || ""}
                             onChange={(e) => onChange(e.target.value)}
-                            placeholder="Describe your asset... (e.g. 'A professional LinkedIn carousel about leadership')"
+                            placeholder="Describe what you want to create today..."
                             className="w-full bg-transparent border-none resize-none focus:ring-0 text-sm min-h-[60px] max-h-60 placeholder:text-gray-400"
                             disabled={disabled || isPlanning || isGenerating}
                             onKeyDown={(e) => {
@@ -113,7 +115,7 @@ export function PromptBar({
                     )}
 
                     <div className={`flex justify-between items-center pt-2 ${isStructuredMode ? 'border-t border-gray-100 mt-2' : 'border-t border-gray-50'}`}>
-                        {/* Left Side Actions (Enhance/Plan) */}
+                        {/* Left Side Actions (Auto-Plan) */}
                         <button
                             onClick={onPlan}
                             disabled={disabled || isPlanning || isGenerating}
@@ -157,4 +159,3 @@ export function PromptBar({
         </div>
     );
 }
-

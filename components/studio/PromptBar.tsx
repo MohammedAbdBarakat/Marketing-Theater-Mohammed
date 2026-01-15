@@ -45,7 +45,7 @@ function CarouselPromptList({
                         value={p}
                         onChange={e => handleChange(i, e.target.value)}
                         placeholder={`Describe content for slide ${i + 1}...`}
-                        className="w-full bg-gray-50 border border-gray-200 rounded-md p-2 pt-8 text-sm focus:ring-1 focus:ring-black focus:border-black transition-all resize-none min-h-[80px]"
+                        className="w-full bg-gray-50 border border-gray-200 rounded-md p-2 pt-8 text-sm focus:ring-1 focus:ring-black focus:border-black transition-all resize-y min-h-[80px]"
                         disabled={disabled}
                     />
                 </div>
@@ -124,7 +124,7 @@ export function PromptBar({
                                     value={prompt || ""}
                                     onChange={(e) => onChange(e.target.value)}
                                     placeholder="Describe your asset... (e.g. 'A professional LinkedIn carousel about leadership')"
-                                    className="w-full bg-transparent border-none resize-none focus:ring-0 text-sm min-h-[60px] max-h-60 placeholder:text-gray-400"
+                                    className="w-full bg-transparent border-none resize-y focus:ring-0 text-sm min-h-[60px] max-h-[400px] placeholder:text-gray-400"
                                     disabled={disabled || isPlanning || isGenerating}
                                     onKeyDown={(e) => {
                                         if (e.key === "Enter" && !e.shiftKey) {

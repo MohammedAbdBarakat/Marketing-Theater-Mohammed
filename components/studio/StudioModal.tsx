@@ -16,77 +16,6 @@ interface StudioModalProps {
 // Minimal Helper for Errors
 
 
-// Magic Edit Popover
-function MagicEditPopover({
-    isOpen,
-    onClose,
-    onGenerate,
-    slideIndex
-}: {
-    isOpen: boolean;
-    onClose: () => void;
-    onGenerate: (prompt: string) => void;
-    slideIndex: number;
-}) {
-    const [val, setVal] = useState("");
-    const inputRef = useRef<HTMLInputElement>(null);
-
-    useEffect(() => {
-        if (isOpen) {
-            setTimeout(() => inputRef.current?.focus(), 50);
-        } else {
-            setVal("");
-        }
-    }, [isOpen]);
-
-    if (!isOpen) return null;
-
-    return (
-        <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-50 w-64">
-            <div className="bg-white rounded-lg shadow-xl border border-gray-200 p-3 animate-in fade-in slide-in-from-bottom-2 duration-200">
-                <div className="flex justify-between items-center mb-2">
-                    <span className="text-xs font-bold text-gray-700 flex items-center gap-1">
-                        <svg className="w-3 h-3 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                        </svg>
-                        Refine Slide {slideIndex}
-                    </span>
-                    <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                    </button>
-                </div>
-                <input
-                    ref={inputRef}
-                    className="w-full text-xs border border-gray-300 rounded px-2 py-1.5 focus:ring-1 focus:ring-purple-500 focus:border-purple-500 mb-2"
-                    placeholder="e.g. Make the sky blue..."
-                    value={val}
-                    onChange={(e) => setVal(e.target.value)}
-                    onKeyDown={(e) => {
-                        if (e.key === "Enter" && val.trim()) {
-                            onGenerate(val);
-                            onClose();
-                        }
-                    }}
-                />
-                <button
-                    disabled={!val.trim()}
-                    onClick={() => {
-                        onGenerate(val);
-                        onClose();
-                    }}
-                    className="w-full bg-purple-600 text-white text-xs font-medium py-1.5 rounded hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                    Magic Modify
-                </button>
-            </div>
-            {/* Arrow */}
-            <div className="absolute left-1/2 -translate-x-1/2 -bottom-1.5 w-3 h-3 bg-white border-b border-r border-gray-200 rotate-45" />
-        </div>
-    );
-}
-
 // Clean Thumbnail Component
 function CarouselThumbnails({
     assets,
@@ -94,7 +23,6 @@ function CarouselThumbnails({
     currentSlide,
     onSelect,
     onResume,
-    onEdit, // New Prop
     status
 }: {
     assets: AssetMediaItem[],
@@ -102,11 +30,12 @@ function CarouselThumbnails({
     currentSlide: number,
     onSelect: (n: number) => void,
     onResume: () => void,
-    onEdit: (n: number, prompt: string) => void, // New
     status: string
 }) {
-    const slides = Array.from({ length: totalSlides });
-    const [editingSlide, setEditingSlide] = useState<number | null>(null);
+    // Generate slide array correctly
+    // If totalSlides is not provided, use existing assets count (which might be partial)
+    // But we usually want to show the TARGET length if known.
+    const slides = Array.from({ length: Math.max(totalSlides, assets.length) });
 
     return (
         <div className="bg-white border-t border-gray-100 px-4 py-2 flex gap-2 overflow-x-auto items-center justify-center min-h-[90px]">
@@ -122,60 +51,34 @@ function CarouselThumbnails({
                 const showReady = isNextSlot && status === 'waiting_for_approval';
 
                 return (
-                    <div key={slideNum} className="relative group">
-                        {/* Magic Edit Popover Anchor */}
-                        <MagicEditPopover
-                            isOpen={editingSlide === slideNum}
-                            onClose={() => setEditingSlide(null)}
-                            slideIndex={slideNum}
-                            onGenerate={(prompt) => onEdit(slideNum, prompt)}
-                        />
-
-                        <button
-                            onClick={() => {
-                                if (isGenerated) onSelect(slideNum);
-                                else if (showReady) onResume();
-                            }}
-                            disabled={!isGenerated && !showReady}
-                            className={`
-                                relative w-16 h-16 rounded-lg border-2 flex-shrink-0 transition-all overflow-hidden flex items-center justify-center
-                                ${isCurrent ? "border-purple-600 ring-1 ring-purple-100 shadow-md z-10 scale-105" : "border-gray-200 hover:border-gray-300"}
-                                ${!isGenerated && !showReady ? "cursor-default bg-gray-50" : "cursor-pointer bg-white"}
-                                ${showReady ? "border-dashed border-gray-400 bg-gray-50 hover:bg-gray-100 hover:border-gray-500" : ""}
-                            `}
-                        >
-                            {isGenerated ? (
-                                <>
-                                    <img src={effectiveAsset.url} alt={`Slide ${slideNum}`} className="w-full h-full object-cover" />
-                                    {/* Magic Wand Trigger (Hover Only) */}
-                                    <div
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setEditingSlide(editingSlide === slideNum ? null : slideNum);
-                                        }}
-                                        className={`absolute top-1 right-1 p-1 rounded-full bg-black/60 hover:bg-purple-600 text-white backdrop-blur-sm transition-all duration-200
-                                            ${editingSlide === slideNum ? 'opacity-100 scale-100' : 'opacity-0 scale-75 group-hover:opacity-100 group-hover:scale-100'}
-                                        `}
-                                        title="Magic Edit"
-                                    >
-                                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                                        </svg>
-                                    </div>
-                                </>
-                            ) : showSpinner ? (
-                                <div className="w-5 h-5 border-2 border-gray-300 border-t-purple-600 rounded-full animate-spin" />
-                            ) : showReady ? (
-                                <div className="text-gray-400 flex flex-col items-center">
-                                    <svg className="w-5 h-5 mb-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-                                </div>
-                            ) : (
-                                <div className="text-xs text-gray-300 font-bold font-mono">
-                                    {slideNum}
-                                </div>
-                            )}
-                        </button>
-                    </div>
+                    <button
+                        key={slideNum}
+                        onClick={() => {
+                            if (isGenerated) onSelect(slideNum);
+                            else if (showReady) onResume();
+                        }}
+                        disabled={!isGenerated && !showReady}
+                        className={`
+                            relative w-14 h-14 rounded border flex-shrink-0 transition-all overflow-hidden flex items-center justify-center
+                            ${isCurrent ? "border-black ring-1 ring-black shadow-md z-10" : "border-gray-200 hover:border-gray-300"}
+                            ${!isGenerated && !showReady ? "cursor-default bg-gray-50" : "cursor-pointer bg-white"}
+                            ${showReady ? "border-dashed border-gray-400 bg-gray-50 hover:bg-gray-100 hover:border-gray-500" : ""}
+                        `}
+                    >
+                        {isGenerated ? (
+                            <img src={effectiveAsset.url} alt={`Slide ${slideNum}`} className="w-full h-full object-cover" />
+                        ) : showSpinner ? (
+                            <div className="w-4 h-4 border-2 border-gray-300 border-t-black rounded-full animate-spin" />
+                        ) : showReady ? (
+                            <div className="text-gray-400">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                            </div>
+                        ) : (
+                            <div className="text-[10px] text-gray-300 font-bold font-mono">
+                                {slideNum}
+                            </div>
+                        )}
+                    </button>
                 );
             })}
         </div>
@@ -211,13 +114,14 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
         handleGenerate: generate,
         handleResume: resume,
         handleNewVersion,
-        editSlide // ✨ Magic Edit
+        editSlide // ✨
     } = useStudio(runId, assetId, initialContext.type);
 
     // Layout (Resizable)
     const [leftWidth, setLeftWidth] = useState(30);
+    const [topHeight, setTopHeight] = useState(70); // ✨ Vertical Split (Percentage)
     const containerRef = useRef<HTMLDivElement>(null);
-    const isDragging = useRef(false);
+    const dragType = useRef<"horizontal" | "vertical" | null>(null); // ✨ Track drag type
 
     // Mode State
     const [inputMode, setInputMode] = useState<PromptMode>("autopilot");
@@ -227,12 +131,18 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
     // Resize Logic
     useEffect(() => {
         const move = (ev: MouseEvent) => {
-            if (!isDragging.current || !containerRef.current) return;
+            if (!dragType.current || !containerRef.current) return;
             const rect = containerRef.current.getBoundingClientRect();
-            const p = ((ev.clientX - rect.left) / rect.width) * 100;
-            if (p > 20 && p < 60) setLeftWidth(p);
+
+            if (dragType.current === "horizontal") {
+                const p = ((ev.clientX - rect.left) / rect.width) * 100;
+                if (p > 20 && p < 60) setLeftWidth(p);
+            } else if (dragType.current === "vertical") {
+                const p = ((ev.clientY - rect.top) / rect.height) * 100;
+                if (p > 30 && p < 85) setTopHeight(p);
+            }
         };
-        const up = () => { isDragging.current = false; };
+        const up = () => { dragType.current = null; };
 
         document.addEventListener('mousemove', move);
         document.addEventListener('mouseup', up);
@@ -270,7 +180,7 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
             <div
                 ref={containerRef}
-                className="bg-white w-full max-w-[95vw] h-[90vh] rounded-2xl shadow-2xl overflow-hidden flex flex-row border border-gray-200"
+                className="bg-white w-full max-w-[95vw] h-[90vh] rounded-2xl shadow-2xl overflow-hidden flex flex-row border border-gray-200 select-none"
             >
                 {/* --- Left Column: Info & History --- */}
                 <div
@@ -406,7 +316,7 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
                 <div
                     className="w-[1px] bg-gray-200 cursor-col-resize hover:bg-black hover:w-0.5 transition-all z-10"
                     onMouseDown={(e) => {
-                        isDragging.current = true;
+                        dragType.current = "horizontal";
                         e.preventDefault(); // Prevent text selection
                     }}
                 />
@@ -415,7 +325,10 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
                 <div style={{ width: `${100 - leftWidth}%` }} className="flex flex-col bg-white h-full relative">
 
                     {/* Main Preview Area */}
-                    <div className="flex-1 overflow-hidden relative bg-gray-50 flex flex-col">
+                    <div
+                        style={{ height: `${topHeight}%` }}
+                        className="flex-shrink-0 overflow-hidden relative bg-gray-50 flex flex-col"
+                    >
                         {!activeVersion ? (
                             <div className="flex-1 flex flex-col items-center justify-center text-center p-8 text-gray-400">
                                 <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4 text-2xl grayscale opacity-50">✨</div>
@@ -435,6 +348,7 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
                                         selectedSlideInfo={activeVersion.assets.length > 1 ? { num: slideNum, total: activeVersion.assets.length } : undefined}
                                         onSelectSlide={setSlideNum}
                                         hideThumbnails={true} // Replaced redundancy
+                                        onEdit={editSlide} // ✨ Passed here now!
                                     />
                                 </div>
 
@@ -447,18 +361,28 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
                         {isCarousel && activeVersion && (
                             <CarouselThumbnails
                                 assets={(activeVersion as any).media_url || activeVersion.assets || []}
-                                totalSlides={5}
+                                // Use targetSlideCount if available, else fallback to current length (or default 3)
+                                // The hook has 'targetSlideCount', we should populate it.
+                                totalSlides={Math.max(activeVersion.assets.length, targetSlideCount || 3)}
                                 currentSlide={slideNum}
                                 onSelect={setSlideNum}
                                 onResume={resume}
-                                onEdit={editSlide} // ✨ Magic Edit
                                 status={activeVersion.status}
                             />
                         )}
                     </div>
 
+                    {/* ✨ Vertical Resizer */}
+                    <div
+                        className="h-[1px] bg-gray-200 cursor-row-resize hover:bg-black hover:h-1 transition-all z-20 flex-shrink-0"
+                        onMouseDown={(e) => {
+                            dragType.current = "vertical";
+                            e.preventDefault();
+                        }}
+                    />
+
                     {/* Bottom Input Area */}
-                    <div className="flex-shrink-0 z-20">
+                    <div className="flex-1 min-h-0 z-20 bg-white">
                         <PromptBar
                             prompt={prompt}
                             onChange={setPrompt}

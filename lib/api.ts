@@ -9,7 +9,7 @@ export type Duration = { start: string; end: string };
 export type ProjectMeta = {
   id: string;
   name: string;
-  region: string;
+  // region removed
   duration: Duration;
   createdAt: string;
   updatedAt: string;
@@ -528,7 +528,6 @@ function write<T>(key: string, value: T) {
 
 export async function createProject(input: {
   name: string;
-  region: string;
   duration: Duration;
 }): Promise<{ projectId: string }> {
   if (IS_REMOTE) {
@@ -543,7 +542,6 @@ export async function createProject(input: {
   projects[id] = {
     id,
     name: input.name || "Untitled Project",
-    region: input.region || "US",
     duration: input.duration,
     createdAt: now,
     updatedAt: now,
@@ -755,11 +753,16 @@ export async function ensureDemoProjects(): Promise<void> {
     return {
       id: nanoid(8),
       name,
-      region,
       duration: { start, end },
       createdAt,
       updatedAt,
-      // brand/strategy omitted for brevity in demo
+      strategy: {
+        goal: "Demo Goal",
+        audience: "Demo Audience",
+        campaignStyles: [],
+        alignWithEvents: false,
+        region: region
+      }
     };
   };
 

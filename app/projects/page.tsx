@@ -93,7 +93,7 @@ export default function ProjectsPage() {
                   <div>
                     <div className="font-medium group-hover:text-blue-600 transition-colors">{p.name}</div>
                     <div className="text-sm text-gray-600">
-                      Region: {p.region}
+                      Region: {p.strategy?.region || "Global"}
                     </div>
                   </div>
                   <div className="text-xs text-gray-500 text-right">

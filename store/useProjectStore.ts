@@ -7,7 +7,7 @@ export type Duration = { start: string; end: string };
 export type ProjectState = {
   projectId?: string;
   name: string;
-  region: string;
+  // region removed
   duration: Duration;
   brand: {
     toneOfVoice: string[];
@@ -27,7 +27,7 @@ export type ProjectState = {
     preferences?: { tags?: string[]; ugc?: boolean; constraints?: string };
   };
   setProjectId: (id: string) => void;
-  updateMeta: (p: Partial<Pick<ProjectState, "name" | "region" | "duration">>) => void;
+  updateMeta: (p: Partial<Pick<ProjectState, "name" | "duration">>) => void;
   updateBrand: (b: Partial<ProjectState["brand"]>) => void;
   updateStrategy: (s: Partial<ProjectState["strategy"]>) => void;
   reset: () => void;
@@ -36,7 +36,7 @@ export type ProjectState = {
 // --- UPDATED DEFAULTS HERE ---
 const defaults: Omit<ProjectState, "setProjectId" | "updateMeta" | "updateBrand" | "updateStrategy" | "reset"> = {
   name: "Untitled Project",
-  region: "US",
+  // region removed
   duration: {
     start: new Date().toISOString().slice(0, 10),
     end: new Date(Date.now() + 1000 * 60 * 60 * 24 * 28).toISOString().slice(0, 10),
@@ -57,10 +57,10 @@ const defaults: Omit<ProjectState, "setProjectId" | "updateMeta" | "updateBrand"
     alignWithEvents: true,
     region: "EU", // Using EU as proxy for Dubai/Intl
     timeWindow: undefined,
-    preferences: { 
-      tags: ["Luxury", "Sailing", "Burj Al Arab", "VIP"], 
-      ugc: true, 
-      constraints: "Must explicitly mention the ID/Passport requirement for all guests. Focus on safety." 
+    preferences: {
+      tags: ["Luxury", "Sailing", "Burj Al Arab", "VIP"],
+      ugc: true,
+      constraints: "Must explicitly mention the ID/Passport requirement for all guests. Focus on safety."
     },
   },
 };

@@ -17,16 +17,14 @@ export default function StrategyInputsPage() {
   const [audience, setAudience] = useState(store.strategy.audience);
   const [styles, setStyles] = useState<string[]>(store.strategy.campaignStyles);
   const [align, setAlign] = useState<boolean>(store.strategy.alignWithEvents);
-  const [region, setRegion] = useState(store.strategy.region || store.region);
+  const [region, setRegion] = useState(store.strategy.region || "US");
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   // --- !!! (الإضافة 1): إضافة حالات للحقول المتقدمة !!! ---
   const [preferencesTags, setPreferencesTags] = useState(
     store.strategy.preferences?.tags?.join(", ") || ""
   );
-  const [ugcFriendly, setUgcFriendly] = useState(
-    store.strategy.preferences?.ugc ?? true
-  );
+  // UGC removed
   const [constraints, setConstraints] = useState(
     store.strategy.preferences?.constraints || ""
   );
@@ -64,7 +62,7 @@ export default function StrategyInputsPage() {
           .split(",")
           .map((tag) => tag.trim())
           .filter(Boolean),
-        ugc: ugcFriendly,
+        // ugc removed
         constraints: constraints,
       },
       // --- نهاية الإضافة ---
@@ -126,9 +124,8 @@ export default function StrategyInputsPage() {
                 key={s}
                 type="button"
                 onClick={() => toggleStyle(s)}
-                className={`text-xs px-3 py-1 rounded-full border ${
-                  styles.includes(s) ? "bg-black text-white" : ""
-                }`}
+                className={`text-xs px-3 py-1 rounded-full border ${styles.includes(s) ? "bg-black text-white" : ""
+                  }`}
               >
                 {s}
               </button>
@@ -155,9 +152,14 @@ export default function StrategyInputsPage() {
                 onChange={(e) => setRegion(e.target.value)}
                 className="w-full border rounded px-3 py-2"
               >
-                <option>US</option>
-                <option>EU</option>
-                <option>APAC</option>
+                <option value="Global">Global</option>
+                <option value="North America">North America</option>
+                <option value="Latin America">Latin America</option>
+                <option value="Europe">Europe</option>
+                <option value="Middle East">Middle East</option>
+                <option value="GCC">GCC (Gulf Cooperation Council)</option>
+                <option value="Africa">Africa</option>
+                <option value="Asia Pacific">Asia Pacific</option>
               </select>
             </div>
           </div>
@@ -181,17 +183,7 @@ export default function StrategyInputsPage() {
                 onChange={(e) => setPreferencesTags(e.target.value)}
               />
             </div>
-            <div className="flex items-center gap-2">
-              <input
-                id="ugcy"
-                type="checkbox"
-                checked={ugcFriendly}
-                onChange={(e) => setUgcFriendly(e.target.checked)}
-              />
-              <label htmlFor="ugcy" className="text-sm">
-                UGC friendly
-              </label>
-            </div>
+            {/* UGC option removed */}
             <div>
               <label className="block text-sm mb-1">Constraints</label>
               <input

@@ -14,7 +14,7 @@ export default function Home() {
   }, []);
 
   const [name, setName] = useState("Untitled Project");
-  const [region, setRegion] = useState("US");
+  // region state removed
 
   const [start, setStart] = useState(new Date().toISOString().slice(0, 10));
   const [end, setEnd] = useState(
@@ -30,15 +30,14 @@ export default function Home() {
 
   async function onContinue() {
     if (isDateInvalid) return; // Extra safety check
-    
+
     setLoading(true);
     const duration = { start, end };
     const { projectId } = await createProject({
       name,
-      region,
       duration,
     });
-    projectStore.updateMeta({ name, region, duration });
+    projectStore.updateMeta({ name, duration });
     projectStore.setProjectId(projectId);
     router.push(`/projects/${projectId}/inputs/brand`);
   }
@@ -65,21 +64,7 @@ export default function Home() {
               placeholder="e.g., Q1 Awareness"
             />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm mb-1">Region</label>
-              <select
-                value={region}
-                onChange={(e) => setRegion(e.target.value)}
-                className="w-full border rounded px-3 py-2"
-              >
-                <option>US</option>
-                <option>EU</option>
-                <option>APAC</option>
-              </select>
-            </div>
-          </div>
-          
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm mb-1">Start</label>
@@ -97,9 +82,8 @@ export default function Home() {
                 min={start} /* ADDED: Prevents picking earlier dates in UI */
                 value={end}
                 onChange={(e) => setEnd(e.target.value)}
-                className={`w-full border rounded px-3 py-2 ${
-                  isDateInvalid ? "border-red-500 focus:ring-red-500" : ""
-                }`}
+                className={`w-full border rounded px-3 py-2 ${isDateInvalid ? "border-red-500 focus:ring-red-500" : ""
+                  }`}
               />
             </div>
           </div>

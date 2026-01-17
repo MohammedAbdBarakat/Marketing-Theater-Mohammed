@@ -59,7 +59,16 @@ export default function TestTheaterPage() {
         <div className="p-12 bg-gray-100 min-h-screen">
             <h1 className="text-2xl font-bold mb-8">Theater Demo (Typewriter Test)</h1>
             <div className="max-w-2xl mx-auto">
-                <MeetingTheater logs={logs} isDone={isDone} />
+                <MeetingTheater
+                    logs={logs.reduce((acc, log) => {
+                        const p = log.phase || 1;
+                        if (!acc[p]) acc[p] = [];
+                        acc[p].push(log);
+                        return acc;
+                    }, {} as Record<number, TheaterLog[]>)}
+                    currentPhase={logs.length > 0 ? (logs[logs.length - 1].phase || 1) : 1}
+                    isDone={isDone}
+                />
             </div>
             <div className="mt-8 text-center">
                 <button onClick={() => { setLogs([]); setIsDone(false); setIndex(0); }} className="bg-black text-white px-4 py-2 rounded">Restart Demo</button>

@@ -51,26 +51,33 @@ export function VideoMixer({ selection, onChange, disabled }: VideoMixerProps) {
                     title="🎥 Camera"
                     items={options.cameras}
                     selected={selection.camera}
-                    onSelect={(v) => toggle("camera", v)}
+                    onSelect={(v: string) => toggle("camera", v)}
                 />
                 <CategoryColumn
                     title="💡 Lighting"
                     items={options.lighting}
                     selected={selection.lighting}
-                    onSelect={(v) => toggle("lighting", v)}
+                    onSelect={(v: string) => toggle("lighting", v)}
                 />
                 <CategoryColumn
                     title="🎬 Action"
                     items={options.actions}
                     selected={selection.action}
-                    onSelect={(v) => toggle("action", v)}
+                    onSelect={(v: string) => toggle("action", v)}
                 />
             </div>
         </div>
     );
 }
 
-function CategoryColumn({ title, items, selected, onSelect }: any) {
+interface CategoryColumnProps {
+    title: string;
+    items: string[];
+    selected?: string;
+    onSelect: (value: string) => void;
+}
+
+function CategoryColumn({ title, items, selected, onSelect }: CategoryColumnProps) {
     return (
         <div>
             <div className="text-[10px] font-medium text-gray-400 mb-2">{title}</div>

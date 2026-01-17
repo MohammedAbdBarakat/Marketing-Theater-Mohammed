@@ -296,12 +296,15 @@ export default function RunPage() {
       </div>
 
       {/* DEBUG LOGS */}
-      {console.log("RENDER DEBUG:", {
-        status: run.status,
-        hasStrategyPrompt: !!strategyPrompt,
-        candidates: run.results[1]?.candidates,
-        hasCandidates: !!(run.results[1]?.candidates && run.results[1].candidates.length > 0)
-      })}
+      {(() => {
+        console.log("RENDER DEBUG:", {
+          status: run.status,
+          hasStrategyPrompt: !!strategyPrompt,
+          candidates: run.results[1]?.candidates,
+          hasCandidates: !!(run.results[1]?.candidates && run.results[1].candidates.length > 0)
+        });
+        return null;
+      })()}
 
       {(strategyPrompt || (run.status === "waiting_for_selection" && run.results[1]?.candidates)) && (
         <StrategySelectModal

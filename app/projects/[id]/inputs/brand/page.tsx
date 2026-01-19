@@ -6,6 +6,7 @@ import { uploadFilesRemote } from "../../../../../lib/upload";
 import { updateProject, checkInstagramCache, analyzeVisuals, type AnalyzeVisualsRequest } from "../../../../../lib/api";
 import { nanoid } from "nanoid";
 import { useState } from "react";
+import { VisualDNAModal } from "../../../../../components/common/VisualDNAModal";
 
 export default function BrandInputsPage() {
   const { id } = useParams<{ id: string }>();
@@ -18,10 +19,14 @@ export default function BrandInputsPage() {
   // --- INSTAGRAM VISUAL DNA STATE ---
   const [instagramUrl, setInstagramUrl] = useState("");
   const [postCount, setPostCount] = useState<3 | 5 | 10 | 12>(5);
+  const [scrapeType, setScrapeType] = useState<"images" | "videos" | "all">("all");
   const [forceRescrape, setForceRescrape] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [cacheInfo, setCacheInfo] = useState<{ images: number; videos: number } | null>(null);
   const [analysisComplete, setAnalysisComplete] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState<{ images: number; videos: number } | null>(null);
+  const [fullAnalysisResult, setFullAnalysisResult] = useState<any>(null);
+  const [showResults, setShowResults] = useState(false);
 
   async function onFiles(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files;
@@ -94,15 +99,23 @@ export default function BrandInputsPage() {
     }
     setIsAnalyzing(true);
     setAnalysisComplete(false);
+    setAnalysisResult(null);
+    setFullAnalysisResult(null);
+    setShowResults(false);
     try {
       const options: AnalyzeVisualsRequest = {
         instagramUrl,
-        scrapeType: "all",
+        scrapeType,
         forceRescrape,
         maxCount: postCount,
       };
-      await analyzeVisuals(id, options);
+      const result = await analyzeVisuals(id, options);
       setAnalysisComplete(true);
+      setAnalysisResult({
+        images: result.image_analysis?.length || 0,
+        videos: result.video_analysis?.length || 0,
+      });
+      setFullAnalysisResult(result);
       setCacheInfo(null);
     } catch (err) {
       alert("Analysis failed. Please try again.");
@@ -190,17 +203,31 @@ export default function BrandInputsPage() {
                   <option value={12}>12 posts</option>
                 </select>
               </div>
-              <div className="flex items-center gap-2 pt-5">
-                <input
-                  type="checkbox"
-                  id="forceRescrape"
-                  checked={forceRescrape}
-                  onChange={(e) => setForceRescrape(e.target.checked)}
+              <div className="flex-1">
+                <label className="block text-sm mb-1">Content type</label>
+                <select
+                  value={scrapeType}
+                  onChange={(e) => setScrapeType(e.target.value as "images" | "videos" | "all")}
                   disabled={isAnalyzing}
-                  className="w-4 h-4"
-                />
-                <label htmlFor="forceRescrape" className="text-sm">Force refresh</label>
+                  className="w-full px-3 py-2 border rounded text-sm disabled:opacity-50"
+                >
+                  <option value="all">All (Images & Videos)</option>
+                  <option value="images">Images only</option>
+                  <option value="videos">Videos only</option>
+                </select>
               </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="forceRescrape"
+                checked={forceRescrape}
+                onChange={(e) => setForceRescrape(e.target.checked)}
+                disabled={isAnalyzing}
+                className="w-4 h-4"
+              />
+              <label htmlFor="forceRescrape" className="text-sm">Force refresh (re-scrape even if cached)</label>
             </div>
 
             <button
@@ -218,11 +245,25 @@ export default function BrandInputsPage() {
               )}
             </button>
 
-            {analysisComplete && (
-              <div className="text-xs text-gray-700 bg-gray-100 border border-gray-300 rounded p-2">
-                ✓ Visual DNA extracted successfully!
+            {analysisComplete && analysisResult && (
+              <div className="space-y-2">
+                <div className="text-xs text-gray-700 bg-gray-100 border border-gray-300 rounded p-2 flex items-center justify-between">
+                  <span>✓ Visual DNA extracted: {analysisResult.images} images, {analysisResult.videos} videos analyzed</span>
+                  <button
+                    onClick={() => setShowResults(true)}
+                    className="text-xs underline text-gray-600 hover:text-black"
+                  >
+                    View Details
+                  </button>
+                </div>
               </div>
             )}
+
+            <VisualDNAModal
+              isOpen={showResults}
+              onClose={() => setShowResults(false)}
+              data={fullAnalysisResult}
+            />
           </div>
         </section>
       </div>

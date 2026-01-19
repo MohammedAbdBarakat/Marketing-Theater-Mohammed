@@ -846,7 +846,12 @@ export async function checkInstagramCache(instagramUrl: string): Promise<Instagr
 export async function analyzeVisuals(
   projectId: string,
   options: AnalyzeVisualsRequest
-): Promise<{ images_analyzed: any[]; videos_analyzed: any[] }> {
+): Promise<{
+  summary?: string;
+  image_analysis: any[];
+  video_analysis: any[];
+  scraped_samples?: { name: string; url: string; type: "image" | "video" }[];
+}> {
   if (IS_REMOTE) {
     return http(`/projects/${projectId}/analyze-visuals`, {
       method: "POST",
@@ -855,6 +860,6 @@ export async function analyzeVisuals(
   }
   // Mock: return empty results after delay
   return new Promise((resolve) =>
-    setTimeout(() => resolve({ images_analyzed: [], videos_analyzed: [] }), 2000)
+    setTimeout(() => resolve({ summary: "Mock: 0 images, 0 videos", image_analysis: [], video_analysis: [], scraped_samples: [] }), 2000)
   );
 }

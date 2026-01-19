@@ -55,7 +55,7 @@ const defaults: Omit<ProjectState, "setProjectId" | "updateMeta" | "updateBrand"
     audience: "Affluent tourists visiting Dubai (EU/UK/Russia) and Corporate Event Managers seeking luxury venues.",
     campaignStyles: ["Social", "Influencers", "Events"],
     alignWithEvents: true,
-    region: "EU", // Using EU as proxy for Dubai/Intl
+    region: "Europe", // Using EU as proxy for Dubai/Intl
     timeWindow: undefined,
     preferences: {
       tags: ["Luxury", "Sailing", "Burj Al Arab", "VIP"],

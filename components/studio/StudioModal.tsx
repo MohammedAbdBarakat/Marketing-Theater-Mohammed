@@ -38,16 +38,24 @@ function CarouselThumbnails({
     // But we usually want to show the TARGET length if known.
     const slides = Array.from({ length: Math.max(totalSlides, assets.length) });
 
+    // Calculate highest actually generated slide (with URL)
+    const generatedAssets = assets.filter(a => a.url);
+    const highestGeneratedSlide = generatedAssets.length > 0
+        ? Math.max(...generatedAssets.map(a => a.slide_num || 0))
+        : 0;
+
     return (
         <div className="bg-white border-t border-gray-100 px-4 py-2 flex gap-2 overflow-x-auto items-center justify-center min-h-[90px]">
             {slides.map((_, i) => {
                 const slideNum = i + 1;
+                // Find asset by slide_num first
                 const asset = assets.find(a => a.slide_num === slideNum);
-                const effectiveAsset = asset || (assets[i] ? assets[i] : undefined);
-                const isGenerated = !!effectiveAsset;
+                // Check if this slide is truly generated (has URL)
+                const isGenerated = !!(asset?.url);
                 const isCurrent = slideNum === currentSlide;
 
-                const isNextSlot = !isGenerated && slideNum === (assets.length + 1);
+                // Next slot is the slide immediately after highest generated
+                const isNextSlot = !isGenerated && slideNum === (highestGeneratedSlide + 1);
                 const showSpinner = (isNextSlot && status === 'processing');
                 const showReady = isNextSlot && status === 'waiting_for_approval';
 
@@ -55,9 +63,10 @@ function CarouselThumbnails({
                     <button
                         key={slideNum}
                         onClick={() => {
-                            if (isGenerated) onSelect(slideNum);
+                            if (isGenerated && asset?.url) onSelect(slideNum);
                             else if (showReady) onResume();
                         }}
+                        // Allow clicking generated slides even during processing
                         disabled={!isGenerated && !showReady}
                         className={`
                             relative w-14 h-14 rounded border flex-shrink-0 transition-all overflow-hidden flex items-center justify-center
@@ -66,8 +75,8 @@ function CarouselThumbnails({
                             ${showReady ? "border-dashed border-gray-400 bg-gray-50 hover:bg-gray-100 hover:border-gray-500" : ""}
                         `}
                     >
-                        {isGenerated ? (
-                            <img src={effectiveAsset.url} alt={`Slide ${slideNum}`} className="w-full h-full object-cover" />
+                        {isGenerated && asset?.url ? (
+                            <img src={asset.url} alt={`Slide ${slideNum}`} className="w-full h-full object-cover" />
                         ) : showSpinner ? (
                             <div className="w-4 h-4 border-2 border-gray-300 border-t-black rounded-full animate-spin" />
                         ) : showReady ? (
@@ -143,10 +152,10 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
 
             if (dragType.current === "horizontal") {
                 const p = ((ev.clientX - rect.left) / rect.width) * 100;
-                if (p > 20 && p < 60) setLeftWidth(p);
+                if (p > 15 && p < 50) setLeftWidth(p);
             } else if (dragType.current === "vertical") {
                 const p = ((ev.clientY - rect.top) / rect.height) * 100;
-                if (p > 30 && p < 85) setTopHeight(p);
+                if (p > 20 && p < 90) setTopHeight(p);
             }
         };
         const up = () => { dragType.current = null; };

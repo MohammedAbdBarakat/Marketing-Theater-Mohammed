@@ -9,7 +9,7 @@ import { PhaseStepper } from "../../../../components/run/PhaseStepper";
 import { MeetingTheater } from "../../../../components/run/MeetingTheater";
 import { PhaseResultCard } from "../../../../components/run/PhaseResultCard";
 import { StrategySelectModal } from "../../../../components/run/StrategySelectModal";
-import { selectStrategy, getLatestRunForProject, resetPhase4 } from "../../../../lib/api";
+import { selectStrategy, getLatestRunForProject, resetPhase4, downloadReport } from "../../../../lib/api";
 import { ConnectionStatus } from "../../../../components/run/ConnectionStatus";
 import Link from "next/link";
 
@@ -20,6 +20,7 @@ export default function RunPage() {
   const [conn, setConn] = useState<"connecting" | "open" | "closed">("connecting");
   const [strategyPrompt, setStrategyPrompt] = useState<{ items: any[]; recommendedId?: string } | null>(null);
   const [isResetting, setIsResetting] = useState(false);
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
   const duration = useMemo(() => ({ start: project.duration.start, end: project.duration.end }), [project.duration]);
 
@@ -74,6 +75,20 @@ export default function RunPage() {
       alert("Failed to reset run. Check console.");
       console.error(err);
       setIsResetting(false);
+    }
+  }
+
+  async function handleDownloadReport() {
+    if (!run.runId) return;
+    setIsGeneratingReport(true);
+    try {
+      const { url } = await downloadReport(run.runId);
+      window.open(url, "_blank");
+    } catch (err) {
+      alert("Report generation failed. Please try again.");
+      console.error(err);
+    } finally {
+      setIsGeneratingReport(false);
     }
   }
 
@@ -331,6 +346,21 @@ export default function RunPage() {
               className="text-xs px-3 py-2 text-gray-500 hover:text-gray-800 disabled:opacity-50"
             >
               {isResetting ? "Resetting..." : "Regenerate Plan"}
+            </button>
+
+            <button
+              onClick={handleDownloadReport}
+              disabled={isGeneratingReport}
+              className="text-sm px-4 py-2 rounded border border-gray-300 text-gray-800 hover:bg-gray-100 disabled:opacity-50 flex items-center gap-2"
+            >
+              {isGeneratingReport ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-gray-400 border-t-gray-800 rounded-full animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                "Download Report"
+              )}
             </button>
 
             <Link

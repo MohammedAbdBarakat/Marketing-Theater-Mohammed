@@ -808,3 +808,53 @@ export async function deleteProject(id: string): Promise<void> {
     write(LS_PROJECTS, projects);
   }
 }
+
+// --- PDF Report Generation ---
+export async function downloadReport(runId: string): Promise<{ url: string }> {
+  if (IS_REMOTE) {
+    return http<{ url: string }>(`/runs/${runId}/report`);
+  }
+  // Mock: return a placeholder URL
+  return { url: `https://example.com/mock-report-${runId}.pdf` };
+}
+
+// --- Instagram Visual DNA ---
+export type InstagramCacheResult = {
+  exists: boolean;
+  images: number;
+  videos: number;
+};
+
+export type AnalyzeVisualsRequest = {
+  instagramUrl: string;
+  scrapeType: "images" | "videos" | "all";
+  forceRescrape: boolean;
+  maxCount: 3 | 5 | 10 | 12;
+};
+
+export async function checkInstagramCache(instagramUrl: string): Promise<InstagramCacheResult> {
+  if (IS_REMOTE) {
+    return http<InstagramCacheResult>(`/projects/check-instagram-cache`, {
+      method: "POST",
+      body: JSON.stringify({ instagramUrl }),
+    });
+  }
+  // Mock: pretend cache exists
+  return { exists: true, images: 8, videos: 3 };
+}
+
+export async function analyzeVisuals(
+  projectId: string,
+  options: AnalyzeVisualsRequest
+): Promise<{ images_analyzed: any[]; videos_analyzed: any[] }> {
+  if (IS_REMOTE) {
+    return http(`/projects/${projectId}/analyze-visuals`, {
+      method: "POST",
+      body: JSON.stringify(options),
+    });
+  }
+  // Mock: return empty results after delay
+  return new Promise((resolve) =>
+    setTimeout(() => resolve({ images_analyzed: [], videos_analyzed: [] }), 2000)
+  );
+}

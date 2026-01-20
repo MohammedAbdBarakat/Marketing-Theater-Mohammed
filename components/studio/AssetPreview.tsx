@@ -179,9 +179,9 @@ export function AssetPreview({ assets, selectedSlideInfo, onSelectSlide, hideThu
                     }}
                 >
                     {currentAsset.type === "image" && (
-                        <div className="relative max-h-full max-w-full" onClick={e => e.stopPropagation()}>
+                        <div className="relative w-full h-full flex items-center justify-center" onClick={e => e.stopPropagation()}>
                             {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={currentAsset.url} alt="Asset" className="max-h-full max-w-full object-contain shadow-sm" />
+                            <img src={currentAsset.url} alt="Asset" className="max-w-full max-h-full object-contain shadow-sm" />
                         </div>
                     )}
                     {currentAsset.type === "video" && (

@@ -110,10 +110,25 @@ export function useStudio(runId: string, assetId: string, initialType: string) {
                 // Found the version, update it
                 let newStatus = event.status as any;
 
-                // FIX: If we receive a slide URL in step-by-step mode, we are effectively waiting for approval,
-                // even if the backend reports "processing" (waiting for the resume signal).
-                if (event.url && stepByStep && newStatus === 'processing') {
-                    newStatus = 'waiting_for_approval';
+                // Step-by-step mode status handling:
+                // 1. If we receive a slide URL with processing status, set to waiting_for_approval
+                // 2. If we receive processing WITHOUT a URL, it means resume was triggered - allow it
+                // 3. Never downgrade from waiting_for_approval to processing if there's no URL
+                if (stepByStep) {
+                    if (event.url && newStatus === 'processing') {
+                        // Received a new slide URL - waiting for user to approve next
+                        newStatus = 'waiting_for_approval';
+                    } else if (!event.url && v.status === 'waiting_for_approval' && newStatus === 'processing') {
+                        // Resume triggered - allow transition to processing
+                        // This is correct, user clicked resume
+                    } else if (!event.url && newStatus === 'processing' && v.assets?.length > 0) {
+                        // Backend sent processing status without URL after we already have assets
+                        // This might happen if backend sends status before slide completion
+                        // Keep status as-is to avoid flicker, or if we were waiting_for_approval, keep it
+                        if (v.status === 'waiting_for_approval') {
+                            newStatus = 'waiting_for_approval'; // Don't downgrade
+                        }
+                    }
                 }
 
                 const updated = { ...v, status: newStatus };

@@ -9,6 +9,30 @@ import type { CalendarEntry } from "../../../../store/useRunStore";
 import { useParams } from "next/navigation";
 import { getLatestRunForProject } from "../../../../lib/api";
 
+// Normalize calendar date keys from "2026-01-21 00:25:30.722557" to "2026-01-21"
+function normalizeCalendarDates(
+  rawCalendar: Record<string, CalendarEntry[]>
+): Record<string, CalendarEntry[]> {
+  const normalized: Record<string, CalendarEntry[]> = {};
+
+  for (const [rawKey, entries] of Object.entries(rawCalendar)) {
+    // Extract YYYY-MM-DD from various formats:
+    // "2026-01-21 00:25:30.722557" -> "2026-01-21"
+    // "2026-01-21T00:25:30.722557" -> "2026-01-21"
+    // "2026-01-21" -> "2026-01-21"
+    const dateOnly = rawKey.split(/[T ]/)[0];
+
+    if (normalized[dateOnly]) {
+      // Merge entries if multiple timestamps point to same date
+      normalized[dateOnly] = [...normalized[dateOnly], ...entries];
+    } else {
+      normalized[dateOnly] = entries;
+    }
+  }
+
+  return normalized;
+}
+
 export default function CalendarPage() {
   const { id } = useParams<{ id: string }>();
   const run = useRunStore();
@@ -16,22 +40,32 @@ export default function CalendarPage() {
   const [month, setMonth] = useState(dayjs(project.duration.start).format("YYYY-MM-01"));
   const entries = useMemo(() => run.calendar, [run.calendar]);
   const [open, setOpen] = useState<CalendarEntry | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     // Hydrate calendar from latest persisted run (mock/remote) after refresh.
     if (!id) return;
-    if (Object.keys(run.calendar || {}).length) return;
+    if (Object.keys(run.calendar || {}).length) {
+      setIsLoading(false);
+      return;
+    }
+    setIsLoading(true);
     getLatestRunForProject(id)
       .then((snap) => {
         if (!snap) return;
         run.setRunId(snap.runId);
-        run.setCalendar(snap.calendar as unknown as Record<string, CalendarEntry[]>);
+        // Normalize date keys before setting calendar
+        const normalizedCalendar = normalizeCalendarDates(
+          snap.calendar as unknown as Record<string, CalendarEntry[]>
+        );
+        run.setCalendar(normalizedCalendar);
         run.setPhaseStatus(4, "done");
         run.setCurrentPhase(5);
         run.setStatus("done");
       })
-      .catch(() => {});
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+      .catch(() => { })
+      .finally(() => setIsLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   function prev() {
@@ -47,9 +81,9 @@ export default function CalendarPage() {
     a.href = url; a.download = 'calendar.json'; a.click(); URL.revokeObjectURL(url);
   }
   function downloadCSV() {
-    const rows: string[] = ["date,channel,type,title,owner,effort"]; 
+    const rows: string[] = ["date,channel,type,title,owner,effort"];
     Object.entries(entries).forEach(([date, list]) => {
-      list.forEach((e) => rows.push([date, e.channel, e.type, e.title, e.owner||'', e.effort||''].map((x) => `"${String(x).replaceAll('"','\"')}"`).join(',')));
+      list.forEach((e) => rows.push([date, e.channel, e.type, e.title, e.owner || '', e.effort || ''].map((x) => `"${String(x).replaceAll('"', '\"')}"`).join(',')));
     });
     const blob = new Blob([rows.join("\n")], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -76,6 +110,17 @@ export default function CalendarPage() {
     const ics = [...header, ...events, 'END:VCALENDAR'].join('\r\n');
     const blob = new Blob([ics], { type: 'text/calendar' });
     const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'calendar.ics'; a.click(); URL.revokeObjectURL(url);
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="flex flex-col items-center gap-3">
+          <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200 border-t-black" />
+          <span className="text-sm text-gray-500">Loading calendar...</span>
+        </div>
+      </div>
+    );
   }
 
   return (

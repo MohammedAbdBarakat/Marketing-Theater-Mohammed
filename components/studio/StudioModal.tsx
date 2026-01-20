@@ -381,7 +381,7 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
                         {/* Thumbnails (Bottom of Preview) */}
                         {isCarousel && activeVersion && (
                             <CarouselThumbnails
-                                assets={(activeVersion as any).media_url || activeVersion.assets || []}
+                                assets={activeVersion.assets || []}
                                 // Use targetSlideCount if available, else fallback to current length (or default 3)
                                 // The hook has 'targetSlideCount', we should populate it.
                                 totalSlides={Math.max(activeVersion.assets.length, targetSlideCount || 3)}

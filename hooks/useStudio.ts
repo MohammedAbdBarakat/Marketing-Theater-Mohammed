@@ -118,6 +118,12 @@ export function useStudio(runId: string, assetId: string, initialType: string) {
 
                 const updated = { ...v, status: newStatus };
 
+
+                // ✨ CAPTURE MESSAGE
+                if (event.progress_message) {
+                    updated.current_progress_message = event.progress_message;
+                }
+
                 // Handle Slide/URL Update
                 if (event.url) {
                     let newAssets: any[] = [];

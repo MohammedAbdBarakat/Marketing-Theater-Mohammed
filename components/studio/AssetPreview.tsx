@@ -196,7 +196,7 @@ export function AssetPreview({ assets, selectedSlideInfo, onSelectSlide, hideThu
                     onGenerate={(p) => onEdit && onEdit(currentSlideNum, p)}
                 />
 
-                {/* Magic Wand Button (Container Relative) */}
+                {/* 🛠️ FIX: Magic Wand Button - ONLY VISIBLE IF IMAGE */}
                 {onEdit && currentAsset.type === "image" && (
                     <button
                         onClick={(e) => {

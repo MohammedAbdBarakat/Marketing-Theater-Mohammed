@@ -24,6 +24,9 @@ export type AssetVersion = {
 
     // Metadata
     edit_reason?: string; // "Initial Plan" or "User Edit: Make it blue"
+    
+    // ✨ Add optional UI-only state
+    current_progress_message?: string;     
 };
 
 export type PhaseResult = {
@@ -73,5 +76,6 @@ export interface AssetUpdateEvent {
     url?: string;       // Present if an image/video is ready
     error?: string;     // Present if failed
     count?: number;     // Total count (on completion)
+    progress_message?: string; 
 }
 

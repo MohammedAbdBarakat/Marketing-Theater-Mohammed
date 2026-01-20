@@ -34,9 +34,8 @@ function CarouselThumbnails({
     status: string
 }) {
     // Generate slide array correctly
-    // If totalSlides is not provided, use existing assets count (which might be partial)
-    // But we usually want to show the TARGET length if known.
     const slides = Array.from({ length: Math.max(totalSlides, assets.length) });
+
 
     return (
         <div className="bg-white border-t border-gray-100 px-4 py-2 flex gap-2 overflow-x-auto items-center justify-center min-h-[90px]">
@@ -115,25 +114,29 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
         handleGenerate: generate,
         handleResume: resume,
         handleNewVersion,
-        editSlide, // ✨
-        videoOverrides, // ✨
-        setVideoOverrides // ✨
+        editSlide, 
+        videoOverrides, 
+        setVideoOverrides 
     } = useStudio(runId, assetId, initialContext.type);
 
-    const isVideo = initialContext.type === 'video';
-    const [viewMode, setViewMode] = useState<"edited" | "raw">("edited"); // ✨ Video View Mode
+    const isVideo = (initialContext.type || "").toLowerCase() === 'video';
+    const [viewMode, setViewMode] = useState<"edited" | "raw">("edited"); 
 
 
     // Layout (Resizable)
     const [leftWidth, setLeftWidth] = useState(30);
-    const [topHeight, setTopHeight] = useState(70); // ✨ Vertical Split (Percentage)
+    const [topHeight, setTopHeight] = useState(70); 
     const containerRef = useRef<HTMLDivElement>(null);
-    const dragType = useRef<"horizontal" | "vertical" | null>(null); // ✨ Track drag type
+    const dragType = useRef<"horizontal" | "vertical" | null>(null); 
 
     // Mode State
     const [inputMode, setInputMode] = useState<PromptMode>("autopilot");
 
     const expectedTotal = activeVersion?.blueprint?.slides?.length || (isCarousel ? targetSlideCount : 1);
+    useEffect(() => {
+        console.log("isVideo ", isVideo)
+    })
+
 
     // Resize Logic
     useEffect(() => {
@@ -271,15 +274,7 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
                                                             try {
                                                                 if (!v.createdAt) return "";
                                                                 // Raw: "2026-01-13 21:33:23.327721+00"
-                                                                // 1. Replace space with T
-                                                                let safe = v.createdAt.replace(' ', 'T');
-                                                                // 2. Truncate fractional seconds to 3 digits (millis) if > 3
-                                                                //    Matches .123456 -> .123
-                                                                safe = safe.replace(/(\.\d{3})\d+/, '$1');
-                                                                // 3. Fix short timezone "+00" -> "+00:00" if missing minutes
-                                                                //    Matches end of string +00 -> +00:00
-                                                                safe = safe.replace(/([+-]\d{2})$/, '$1:00');
-
+                                                                let safe = v.createdAt.replace(' ', 'T').replace(/(\.\d{3})\d+/, '$1').replace(/([+-]\d{2})$/, '$1:00');
                                                                 const d = new Date(safe);
                                                                 if (isNaN(d.getTime())) return "";
 
@@ -288,22 +283,8 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
                                                                 const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
                                                                 const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-                                                                if (diffDays === 0 && now.getDate() === d.getDate()) {
-                                                                    return `Today ${timeStr}`;
-                                                                } else if (diffDays === 1 || (diffDays === 0 && now.getDate() !== d.getDate())) {
-                                                                    // Covers yesterday even if < 24h but crossed midnight?
-                                                                    // Simple approach: if getDate differs by 1
-                                                                    const yest = new Date(now);
-                                                                    yest.setDate(yest.getDate() - 1);
-                                                                    if (d.getDate() === yest.getDate()) return `Yesterday ${timeStr}`;
-                                                                }
-
-                                                                if (diffDays < 7) {
-                                                                    // Show Weekday
-                                                                    return `${d.toLocaleDateString([], { weekday: 'short' })} ${timeStr}`;
-                                                                }
-
-                                                                // Older -> Date
+                                                                if (diffDays === 0 && now.getDate() === d.getDate()) return `Today ${timeStr}`;
+                                                                if (diffDays === 1) return `Yesterday ${timeStr}`;
                                                                 return `${d.toLocaleDateString([], { month: 'numeric', day: 'numeric' })} ${timeStr}`;
                                                             } catch (e) {
                                                                 return "";
@@ -329,7 +310,7 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
                     className="w-[1px] bg-gray-200 cursor-col-resize hover:bg-black hover:w-0.5 transition-all z-10"
                     onMouseDown={(e) => {
                         dragType.current = "horizontal";
-                        e.preventDefault(); // Prevent text selection
+                        e.preventDefault(); 
                     }}
                 />
 
@@ -350,7 +331,10 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
                         ) : (activeVersion.status === "processing" || activeVersion.status === "created") && activeVersion.assets.length === 0 ? (
                             <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
                                 <div className="animate-spin rounded-full h-12 w-12 border-[3px] border-gray-200 border-t-black mb-6" />
-                                <h3 className="text-gray-900 font-medium animate-pulse">Designing...</h3>
+                                {/* Dynamic Message */}
+                                <h3 className="text-gray-900 font-medium animate-pulse">
+                                    {activeVersion.current_progress_message || "Initializing Production..."}
+                                </h3>
                             </div>
                         ) : (
                             <>
@@ -359,13 +343,10 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
                                         assets={displayAssets}
                                         selectedSlideInfo={activeVersion.assets.length > 1 ? { num: slideNum, total: activeVersion.assets.length } : undefined}
                                         onSelectSlide={setSlideNum}
-                                        hideThumbnails={true} // Replaced redundancy
-                                        onEdit={editSlide} // ✨ Passed here now!
+                                        hideThumbnails={true} 
+                                        onEdit={editSlide} 
                                     />
                                 </div>
-
-                                {/* Status Banner */}
-                                {/* Status Banner Removed per user request - Resume moved to Thumbnail Play Icon */}
                             </>
                         )}
 
@@ -373,8 +354,6 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
                         {isCarousel && activeVersion && (
                             <CarouselThumbnails
                                 assets={(activeVersion as any).media_url || activeVersion.assets || []}
-                                // Use targetSlideCount if available, else fallback to current length (or default 3)
-                                // The hook has 'targetSlideCount', we should populate it.
                                 totalSlides={Math.max(activeVersion.assets.length, targetSlideCount || 3)}
                                 currentSlide={slideNum}
                                 onSelect={setSlideNum}
@@ -383,7 +362,7 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
                             />
                         )}
 
-                        {/* ✅ NEW: Video Toggle Controls (Floating on top) */}
+                        {/* Video Toggle Controls */}
                         {isVideo && activeVersion?.status === "completed" && activeVersion.assets.length > 1 && (
                             <div className="absolute top-4 right-4 z-20 bg-white/90 backdrop-blur border border-gray-200 p-1 rounded-lg flex gap-1 shadow-sm">
                                 <button
@@ -402,7 +381,7 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
                         )}
                     </div>
 
-                    {/* ✨ Vertical Resizer */}
+                    {/* Vertical Resizer */}
                     <div
                         className="h-[1px] bg-gray-200 cursor-row-resize hover:bg-black hover:h-1 transition-all z-20 flex-shrink-0"
                         onMouseDown={(e) => {
@@ -413,14 +392,6 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
 
                     {/* Bottom Input Area */}
                     <div className="flex-1 min-h-0 z-20 bg-white">
-                        {/* ✅ NEW: Video Mixologist Panel (Only show for Video) */}
-                        {isVideo && (
-                            <VideoMixer
-                                selection={videoOverrides}
-                                onChange={setVideoOverrides}
-                                disabled={isGenerating || isPlanning}
-                            />
-                        )}
                         <PromptBar
                             prompt={prompt}
                             onChange={setPrompt}
@@ -435,18 +406,20 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
                             onInputModeChange={setInputMode}
                             controls={(
                                 <>
-                                    {/* Aspect Ratio */}
-                                    <div className="flex items-center gap-2 border-r border-gray-200 pr-4 mr-2">
-                                        <span className="text-[10px] font-bold text-gray-400 uppercase">Ratio</span>
-                                        <select
-                                            value={aspectRatio}
-                                            onChange={e => setAspectRatio(e.target.value)}
-                                            disabled={isGenerating || activeVersion?.status === "processing"}
-                                            className="text-xs border-none bg-gray-100 rounded-md py-1 pl-2 pr-6 focus:ring-0 cursor-pointer font-medium"
-                                        >
-                                            {["1:1", "16:9", "9:16", "4:5", "3:4"].map(r => <option key={r} value={r}>{r}</option>)}
-                                        </select>
-                                    </div>
+                                    {/* 🛠️ FIX: HIDE Ratio for Video */}
+                                    {!isVideo && (
+                                        <div className="flex items-center gap-2 border-r border-gray-200 pr-4 mr-2">
+                                            <span className="text-[10px] font-bold text-gray-400 uppercase">Ratio</span>
+                                            <select
+                                                value={aspectRatio}
+                                                onChange={e => setAspectRatio(e.target.value)}
+                                                disabled={isGenerating || activeVersion?.status === "processing"}
+                                                className="text-xs border-none bg-gray-100 rounded-md py-1 pl-2 pr-6 focus:ring-0 cursor-pointer font-medium"
+                                            >
+                                                {["1:1", "16:9", "9:16", "4:5", "3:4"].map(r => <option key={r} value={r}>{r}</option>)}
+                                            </select>
+                                        </div>
+                                    )}
 
                                     {isCarousel && (
                                         <>
@@ -486,4 +459,3 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
         </div>
     );
 }
-

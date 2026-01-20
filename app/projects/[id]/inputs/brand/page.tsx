@@ -80,7 +80,8 @@ export default function BrandInputsPage() {
   async function handleCheckCache() {
     if (!instagramUrl.trim()) return;
     try {
-      const result = await checkInstagramCache(instagramUrl);
+      const result = await checkInstagramCache(instagramUrl, id);
+
       if (result.exists) {
         setCacheInfo({ images: result.images, videos: result.videos });
       } else {

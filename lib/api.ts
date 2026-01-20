@@ -832,11 +832,11 @@ export type AnalyzeVisualsRequest = {
   maxCount: 3 | 5 | 10 | 12;
 };
 
-export async function checkInstagramCache(instagramUrl: string): Promise<InstagramCacheResult> {
+export async function checkInstagramCache(instagramUrl: string, projectId?: string): Promise<InstagramCacheResult> {
   if (IS_REMOTE) {
     return http<InstagramCacheResult>(`/projects/check-instagram-cache`, {
       method: "POST",
-      body: JSON.stringify({ instagramUrl }),
+      body: JSON.stringify({ instagramUrl, projectId  }),
     });
   }
   // Mock: pretend cache exists

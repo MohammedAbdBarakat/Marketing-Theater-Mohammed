@@ -9,7 +9,9 @@ import { PhaseStepper } from "../../../../components/run/PhaseStepper";
 import { MeetingTheater } from "../../../../components/run/MeetingTheater";
 import { PhaseResultCard } from "../../../../components/run/PhaseResultCard";
 import { StrategySelectModal } from "../../../../components/run/StrategySelectModal";
-import { selectStrategy, getLatestRunForProject, resetPhase4, downloadReport } from "../../../../lib/api";
+import { EventsSelectionModal } from "../../../../components/run/EventsSelectionModal";
+import { selectStrategy, getLatestRunForProject, resetPhase4, downloadReport, confirmEventSelection } from "../../../../lib/api";
+import type { CampaignDay, EventSelection } from "../../../../types/events";
 import { ConnectionStatus } from "../../../../components/run/ConnectionStatus";
 import Link from "next/link";
 
@@ -19,6 +21,7 @@ export default function RunPage() {
   const run = useRunStore();
   const [conn, setConn] = useState<"connecting" | "open" | "closed">("connecting");
   const [strategyPrompt, setStrategyPrompt] = useState<{ items: any[]; recommendedId?: string } | null>(null);
+  const [eventsPrompt, setEventsPrompt] = useState<CampaignDay[] | null>(null);
   const [isResetting, setIsResetting] = useState(false);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
@@ -254,6 +257,15 @@ export default function RunPage() {
                   run.addCalendarEntries(ev.date, ev.entries);
                   break;
 
+                case "campaign_events":
+                  // Auto-skip if no events, otherwise show modal
+                  if (ev.days?.every((d: CampaignDay) => d.events.length === 0)) {
+                    await confirmEventSelection(activeRunId!, []);
+                  } else {
+                    setEventsPrompt(ev.days || []);
+                  }
+                  break;
+
                 case "done":
                   run.setPhaseStatus(4, "done");
                   run.setCurrentPhase(5);
@@ -330,6 +342,18 @@ export default function RunPage() {
           results={run.results}
           onSelect={confirmStrategy}
           onClose={() => setStrategyPrompt(null)}
+        />
+      )}
+
+      {eventsPrompt && (
+        <EventsSelectionModal
+          isOpen={!!eventsPrompt}
+          days={eventsPrompt}
+          onConfirm={async (selected) => {
+            if (run.runId) await confirmEventSelection(run.runId, selected);
+            setEventsPrompt(null);
+          }}
+          onClose={() => setEventsPrompt(null)}
         />
       )}
 

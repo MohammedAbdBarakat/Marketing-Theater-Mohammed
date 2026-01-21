@@ -818,6 +818,23 @@ export async function downloadReport(runId: string): Promise<{ url: string }> {
   return { url: `https://example.com/mock-report-${runId}.pdf` };
 }
 
+// --- Events Selection ---
+export type { EventSelection, CampaignDay, RegionalEvent } from "../types/events";
+
+export async function confirmEventSelection(
+  runId: string,
+  selectedEvents: { day_index: number; event_name: string; country?: string }[]
+): Promise<{ status: string; event_count: number }> {
+  if (IS_REMOTE) {
+    return http<{ status: string; event_count: number }>(`/runs/${runId}/confirm-events`, {
+      method: "POST",
+      body: JSON.stringify({ selected_events: selectedEvents }),
+    });
+  }
+  // Mock: return success
+  return { status: "confirmed", event_count: selectedEvents.length };
+}
+
 // --- Instagram Visual DNA ---
 export type InstagramCacheResult = {
   exists: boolean;
@@ -826,7 +843,7 @@ export type InstagramCacheResult = {
 };
 
 export type AnalyzeVisualsRequest = {
-  instagramUrl: string;
+  instagramUrl?: string;
   scrapeType: "images" | "videos" | "all";
   forceRescrape: boolean;
   maxCount: 3 | 5 | 10 | 12;
@@ -836,7 +853,7 @@ export async function checkInstagramCache(instagramUrl: string, projectId?: stri
   if (IS_REMOTE) {
     return http<InstagramCacheResult>(`/projects/check-instagram-cache`, {
       method: "POST",
-      body: JSON.stringify({ instagramUrl, projectId  }),
+      body: JSON.stringify({ instagramUrl, projectId }),
     });
   }
   // Mock: pretend cache exists

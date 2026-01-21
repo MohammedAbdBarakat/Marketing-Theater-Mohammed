@@ -25,6 +25,9 @@ function getFlagEmoji(countryCode: string): string {
     return flags[countryCode?.toLowerCase()] || "🌍";
 }
 
+// Helper is likely already there or can be kept/re-added if needed.
+// IMPORTANT: I am replacing the entire component to ensure clean state from previous partial edits
+
 export function DayEventCard({ day, selections, onToggle }: DayEventCardProps) {
     const [isFlipped, setIsFlipped] = useState(false);
     const hasEvents = day.events.length > 0;
@@ -54,10 +57,12 @@ export function DayEventCard({ day, selections, onToggle }: DayEventCardProps) {
                     {hasEvents && (
                         <button
                             onClick={() => setIsFlipped(true)}
-                            className="absolute top-2 right-2 w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-xs text-gray-500 transition-colors"
+                            className="absolute top-2 right-2 w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500 transition-colors"
                             title="View details"
                         >
-                            ℹ️
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" />
+                            </svg>
                         </button>
                     )}
 
@@ -100,10 +105,12 @@ export function DayEventCard({ day, selections, onToggle }: DayEventCardProps) {
                     {/* Back button */}
                     <button
                         onClick={() => setIsFlipped(false)}
-                        className="absolute top-2 right-2 w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-xs text-gray-500 transition-colors"
+                        className="absolute top-2 right-2 w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500 transition-colors"
                         title="Go back"
                     >
-                        ←
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M19 12H5" /><path d="M12 19l-7-7 7-7" />
+                        </svg>
                     </button>
 
                     {/* Date mini header */}
@@ -123,17 +130,21 @@ export function DayEventCard({ day, selections, onToggle }: DayEventCardProps) {
                                         </div>
                                         <button
                                             onClick={() => onToggle(day.day_index, event.name)}
-                                            className={`flex-shrink-0 w-5 h-5 rounded border flex items-center justify-center text-xs transition-all ${isSelected
+                                            className={`flex-shrink-0 w-5 h-5 rounded border flex items-center justify-center transition-all ${isSelected
                                                     ? "bg-black text-white border-black"
                                                     : "bg-white text-gray-300 border-gray-300 hover:border-gray-500"
                                                 }`}
                                         >
-                                            {isSelected ? "✓" : ""}
+                                            {isSelected ? (
+                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                                    <polyline points="20 6 9 17 4 12" />
+                                                </svg>
+                                            ) : ""}
                                         </button>
                                     </div>
                                     <div className="flex items-center gap-2 text-[10px] text-gray-500 mb-1">
-                                        <span>{TYPE_LABELS[event.type] || event.type}</span>
-                                        <span>{getFlagEmoji(event.country)} {event.country.toUpperCase()}</span>
+                                        <span className="capitalize">{TYPE_LABELS[event.type] || event.type}</span>
+                                        <span>{getFlagEmoji(event.country)}</span>
                                     </div>
                                     <p className="text-xs text-gray-600 leading-relaxed">
                                         {event.description}

@@ -159,18 +159,25 @@ export async function editAsset(assetId: string, payload: EditAssetRequest): Pro
 
 export async function generateAsset(
   assetId: string,
-  finalPrompt: string,
+  finalPrompt: string | undefined,
   stepByStep: boolean = false,
   targetSlideCount: number = 1,
   options: { aspect_ratio?: string } = {}
 ): Promise<AssetVersion> {
   if (IS_REMOTE) {
+    // ✅ AUTOPILOT MODE: Only include final_prompt if it has content
+    // Backend triggers auto-planner when final_prompt is NOT provided
     const payload: GenerateAssetRequest = {
-      final_prompt: finalPrompt,
       step_by_step: stepByStep,
       slide_count: targetSlideCount,
       aspect_ratio: options.aspect_ratio as any
     };
+
+    // Only add final_prompt if user provided content (Manual Mode)
+    if (finalPrompt && finalPrompt.trim()) {
+      payload.final_prompt = finalPrompt;
+    }
+
     return http<AssetVersion>(`/api/assets/${assetId}/generate`, {
       method: "POST",
       body: JSON.stringify(payload),

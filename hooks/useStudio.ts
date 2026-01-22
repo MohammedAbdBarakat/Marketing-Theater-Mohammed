@@ -250,9 +250,20 @@ export function useStudio(runId: string, assetId: string, initialType: string) {
         setIsGenerating(true);
         try {
             // Construct final prompt based on mode
-            let finalPromptToSend = prompt;
+            // ✅ AUTOPILOT MODE: If all prompts are empty, send undefined to trigger backend auto-planner
+            let finalPromptToSend: string | undefined = prompt.trim() || undefined;
+
             if (isCarousel && structuredPrompts.length > 0) {
-                finalPromptToSend = structuredPrompts.map((p, i) => `[Slide ${i + 1}] ${p}`).join("\n\n");
+                // Check if ANY slide has actual content
+                const hasContent = structuredPrompts.some(p => p.trim().length > 0);
+
+                if (hasContent) {
+                    // Manual mode: user provided slide content
+                    finalPromptToSend = structuredPrompts.map((p, i) => `[Slide ${i + 1}] ${p}`).join("\n\n");
+                } else {
+                    // Autopilot mode: no content provided, let backend generate
+                    finalPromptToSend = undefined;
+                }
             }
 
             // Optimistic Update: API returns initiation object { version_id, ... }

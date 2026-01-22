@@ -390,7 +390,24 @@ export function useStudio(runId: string, assetId: string, initialType: string) {
         setError(null);
     };
 
-    const editSlide = async (slideIndex: number, editPrompt: string) => {
+    // Validation helper for edit capability
+    const canEditSlide = (slideNum: number): boolean => {
+        if (!activeVersion) return false;
+
+        // Check version status
+        if (!['completed', 'waiting_for_approval'].includes(activeVersion.status)) {
+            return false;
+        }
+
+        // Check if slide exists in assets
+        const slideExists = activeVersion.assets?.some(
+            item => item.slide_num === slideNum && item.url
+        );
+
+        return !!slideExists;
+    };
+
+    const editSlide = async (slideIndex: number, editPrompt: string, referenceImages?: string[]) => {
         if (!activeVersion) return;
         setIsGenerating(true);
         setError(null);
@@ -399,7 +416,8 @@ export function useStudio(runId: string, assetId: string, initialType: string) {
             await editAsset(assetId, {
                 sourceVersionId: activeVersion.id,
                 slide_num: slideIndex,
-                prompt: editPrompt
+                prompt: editPrompt,
+                reference_images: referenceImages
             });
             // Ideally toast here, but hook logic remains pure-ish. 
             // The component can observe 'isGenerating' or we can return promise.
@@ -447,6 +465,7 @@ export function useStudio(runId: string, assetId: string, initialType: string) {
         handleGenerate,
         handleResume,
         handleNewVersion,
-        editSlide
+        editSlide,
+        canEditSlide
     };
 }

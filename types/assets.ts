@@ -24,9 +24,9 @@ export type AssetVersion = {
 
     // Metadata
     edit_reason?: string; // "Initial Plan" or "User Edit: Make it blue"
-    
+
     // ✨ Add optional UI-only state
-    current_progress_message?: string;     
+    current_progress_message?: string;
 };
 
 export type PhaseResult = {
@@ -60,7 +60,8 @@ export interface EditAssetRequest {
 
     // ✨ NEW FIELDS
     aspect_ratio?: string; // Can change aspect ratio during edit
-    reference_image?: string;
+    reference_image?: string; // Single reference (backward compat)
+    reference_images?: string[]; // Multiple references (preferred)
 }
 
 // --- SSE Event Type ---
@@ -76,6 +77,6 @@ export interface AssetUpdateEvent {
     url?: string;       // Present if an image/video is ready
     error?: string;     // Present if failed
     count?: number;     // Total count (on completion)
-    progress_message?: string; 
+    progress_message?: string;
 }
 

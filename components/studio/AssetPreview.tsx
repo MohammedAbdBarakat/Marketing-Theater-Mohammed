@@ -1,73 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { AssetMediaItem } from "../../lib/api";
-
-// Magic Edit Popover
-function MagicEditPopover({
-    isOpen,
-    onClose,
-    onGenerate,
-}: {
-    isOpen: boolean;
-    onClose: () => void;
-    onGenerate: (prompt: string) => void;
-}) {
-    const [val, setVal] = useState("");
-    const inputRef = useRef<HTMLInputElement>(null);
-
-    useEffect(() => {
-        if (isOpen) {
-            setTimeout(() => inputRef.current?.focus(), 50);
-        } else {
-            setVal("");
-        }
-    }, [isOpen]);
-
-    if (!isOpen) return null;
-
-    return (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-20 w-72">
-            <div className="bg-white/95 backdrop-blur rounded-lg shadow-xl border border-gray-200 p-3 animate-in fade-in zoom-in-95 duration-200">
-                <div className="flex justify-between items-center mb-2">
-                    <span className="text-xs font-bold text-gray-700 flex items-center gap-1">
-                        <svg className="w-3 h-3 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                        </svg>
-                        Refine Image
-                    </span>
-                    <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                    </button>
-                </div>
-                <input
-                    ref={inputRef}
-                    className="w-full text-xs border border-gray-300 rounded px-2 py-1.5 focus:ring-1 focus:ring-purple-500 focus:border-purple-500 mb-2"
-                    placeholder="e.g. Make the sky blue..."
-                    value={val}
-                    onChange={(e) => setVal(e.target.value)}
-                    onKeyDown={(e) => {
-                        if (e.key === "Enter" && val.trim()) {
-                            onGenerate(val);
-                            onClose();
-                        }
-                    }}
-                />
-                <button
-                    disabled={!val.trim()}
-                    onClick={() => {
-                        onGenerate(val);
-                        onClose();
-                    }}
-                    className="w-full bg-purple-600 text-white text-xs font-medium py-1.5 rounded hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                    Magic Modify
-                </button>
-                <div className="absolute left-1/2 -translate-x-1/2 -top-1.5 w-3 h-3 bg-white border-t border-l border-gray-200 rotate-45" />
-            </div>
-        </div>
-    );
-}
+import { EditModal } from "./EditModal";
 
 function ZoomControls({ zoom, onZoomIn, onZoomOut, onReset }: { zoom: number, onZoomIn: () => void, onZoomOut: () => void, onReset: () => void }) {
     return (
@@ -93,12 +26,13 @@ interface AssetPreviewProps {
     selectedSlideInfo?: { num: number; total: number };
     onSelectSlide?: (num: number) => void;
     hideThumbnails?: boolean;
-    onEdit?: (slideNum: number, prompt: string) => void;
+    onEdit?: (slideNum: number, prompt: string, referenceImages?: string[]) => void;
+    canEdit?: boolean; // Optional explicit disable
 }
 
-export function AssetPreview({ assets, selectedSlideInfo, onSelectSlide, hideThumbnails, onEdit }: AssetPreviewProps) {
+export function AssetPreview({ assets, selectedSlideInfo, onSelectSlide, hideThumbnails, onEdit, canEdit = true }: AssetPreviewProps) {
     const [isExpanded, setIsExpanded] = useState(false);
-    const [isEditing, setIsEditing] = useState(false);
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
     // Zoom & Pan State
     const [zoom, setZoom] = useState(1);
@@ -167,7 +101,7 @@ export function AssetPreview({ assets, selectedSlideInfo, onSelectSlide, hideThu
                     if (zoom > 1) {
                         setIsDragging(true);
                         dragStart.current = { x: e.clientX, y: e.clientY };
-                        setIsEditing(false);
+                        setIsEditModalOpen(false); // Close edit modal if open? Actually it's a modal now, so it covers everything.
                     }
                 }}
                 onWheel={handleWheel}
@@ -189,22 +123,29 @@ export function AssetPreview({ assets, selectedSlideInfo, onSelectSlide, hideThu
                     )}
                 </div>
 
-                {/* Magic Edit Overlay (Container Relative) */}
-                <MagicEditPopover
-                    isOpen={isEditing}
-                    onClose={() => setIsEditing(false)}
-                    onGenerate={(p) => onEdit && onEdit(currentSlideNum, p)}
-                />
+                {/* Edit Modal (Portal-like behavior but rendered here for now) */}
+                {isEditModalOpen && onEdit && (
+                    <EditModal
+                        isOpen={isEditModalOpen}
+                        onClose={() => setIsEditModalOpen(false)}
+                        currentAsset={currentAsset}
+                        slideNum={currentSlideNum}
+                        onSubmit={(prompt, refs) => {
+                            onEdit(currentSlideNum, prompt, refs);
+                            setIsEditModalOpen(false);
+                        }}
+                    />
+                )}
 
                 {/* 🛠️ FIX: Magic Wand Button - ONLY VISIBLE IF IMAGE */}
-                {onEdit && currentAsset.type === "image" && (
+                {onEdit && currentAsset.type === "image" && canEdit && (
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
-                            setIsEditing(!isEditing);
+                            setIsEditModalOpen(true);
                         }}
                         className={`absolute top-2 left-2 p-1.5 bg-black/50 hover:bg-black/70 text-white rounded-md transition-all backdrop-blur-xl z-20 border border-white/10
-                            ${isEditing ? 'opacity-100 ring-1 ring-white/20' : 'opacity-0 group-hover:opacity-100'}
+                            ${isEditModalOpen ? 'opacity-100 ring-1 ring-white/20' : 'opacity-0 group-hover:opacity-100'}
                         `}
                         title="Magic Edit"
                     >

@@ -123,6 +123,7 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
         handleResume: resume,
         handleNewVersion,
         editSlide,
+        canEditSlide,
         videoOverrides,
         setVideoOverrides
     } = useStudio(runId, assetId, initialContext.type);
@@ -353,6 +354,7 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
                                         onSelectSlide={setSlideNum}
                                         hideThumbnails={true}
                                         onEdit={editSlide}
+                                        canEdit={canEditSlide(slideNum)}
                                     />
                                 </div>
                             </>

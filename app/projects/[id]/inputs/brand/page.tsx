@@ -24,6 +24,7 @@ export default function BrandInputsPage() {
   // Instagram State
   const [instagramUrl, setInstagramUrl] = useState("");
   const [postCount, setPostCount] = useState<3 | 5 | 10 | 12>(5);
+  const [scrapeType, setScrapeType] = useState<"images" | "videos" | "all">("all");
   const [forceRescrape, setForceRescrape] = useState(false);
   const [cacheInfo, setCacheInfo] = useState<{ images: number; videos: number } | null>(null);
 
@@ -125,7 +126,7 @@ export default function BrandInputsPage() {
         // Only send URL if in Instagram mode
         instagramUrl: visualSource === 'instagram' ? instagramUrl : undefined,
         // Backend handles uploads automatically from DB
-        scrapeType: "all", 
+        scrapeType: scrapeType,
         forceRescrape,
         maxCount: postCount,
       };
@@ -253,6 +254,20 @@ export default function BrandInputsPage() {
                                 <option value={10}>10 (Deep)</option>
                             </select>
                         </div>
+                        <div>
+                            <label className="block text-[10px] text-gray-500 mb-1">Content Type</label>
+                            <select
+                                value={scrapeType}
+                                onChange={(e) => setScrapeType(e.target.value as any)}
+                                disabled={isAnalyzing}
+                                className="px-2 py-1.5 border rounded text-sm bg-gray-50 h-[34px]"
+                            >
+                                <option value="all">All Media</option>
+                                <option value="images">Images Only</option>
+                                <option value="videos">Videos Only</option>
+                            </select>
+                        </div>
+
                         <div className="flex items-center gap-2 mt-4">
                             <input
                                 type="checkbox"

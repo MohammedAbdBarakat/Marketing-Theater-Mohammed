@@ -259,6 +259,16 @@ export default function RunPage() {
 
                 case "campaign_events":
                   // Auto-skip if no events, otherwise show modal
+                  // CHECK: If Phase 4 is already marked done or we have calendar entries, ignore this to prevent re-opening on reload
+                  const currentStore = useRunStore.getState();
+                  const hasCalendarData = Object.keys(currentStore.calendar).length > 0;
+                  const isPhase4Done = currentStore.phases[4] === "done";
+
+                  if (hasCalendarData || isPhase4Done) {
+                    console.log("Ignoring campaign_events event because Phase 4 is already done/has content.");
+                    return;
+                  }
+
                   if (ev.days?.every((d: CampaignDay) => d.events.length === 0)) {
                     await confirmEventSelection(activeRunId!, []);
                   } else {

@@ -102,26 +102,35 @@ export function EventsSelectionModal({
                                 : "No regional events found for this campaign period"}
                         </p>
                     </div>
-                    <button
-                        onClick={handleConfirm}
-                        disabled={isSubmitting}
-                        className={`
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={onClose}
+                            className="text-sm text-gray-500 hover:text-gray-800 font-medium px-3 py-2"
+                        >
+                            Exit
+                        </button>
+
+                        <button
+                            onClick={handleConfirm}
+                            disabled={isSubmitting}
+                            className={`
               px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2
               ${isSubmitting
-                                ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                                : "bg-black text-white hover:bg-gray-800"
-                            }
+                                    ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                                    : "bg-black text-white hover:bg-gray-800"
+                                }
             `}
-                    >
-                        {isSubmitting ? (
-                            <>
-                                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                Confirming...
-                            </>
-                        ) : (
-                            <>Confirm & Continue →</>
-                        )}
-                    </button>
+                        >
+                            {isSubmitting ? (
+                                <>
+                                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    Confirming...
+                                </>
+                            ) : (
+                                <>Confirm & Continue →</>
+                            )}
+                        </button>
+                    </div>
                 </div>
 
                 {/* Calendar Grid */}

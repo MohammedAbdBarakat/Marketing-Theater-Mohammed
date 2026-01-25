@@ -11,6 +11,7 @@ interface PromptBarProps {
     isGenerating: boolean;
     disabled?: boolean;
     controls?: React.ReactNode;
+    extraOptions?: React.ReactNode;
 }
 
 function CarouselPromptList({
@@ -68,6 +69,7 @@ export function PromptBar({
     isGenerating,
     disabled,
     controls,
+    extraOptions,
     inputMode,
     onInputModeChange
 }: PromptBarProps & { inputMode: PromptMode; onInputModeChange: (m: PromptMode) => void }) {
@@ -102,7 +104,7 @@ export function PromptBar({
 
             {/* Controls Row (if present) */}
             {controls && (
-                <div className="flex items-center gap-4 px-1">
+                <div className="flex flex-wrap items-center gap-2 px-1 pb-1">
                     {controls}
                 </div>
             )}
@@ -159,11 +161,21 @@ export function PromptBar({
                         </div>
                     </>
                 ) : (
-                    <div className="p-4 bg-gray-50 rounded-lg border border-dashed border-gray-300 text-center flex flex-col items-center justify-center gap-2">
-                        <div className="text-2xl">🤖</div>
-                        <p className="text-xs text-gray-500 font-medium">AI will handle the creative direction.</p>
+                    <div className="py-3 text-center flex items-center justify-center gap-2 opacity-50 bg-gray-50/50 rounded-lg border border-dashed border-gray-200 mx-1">
+                        <span className="text-xl grayscale">✨</span>
+                        <span className="text-[10px] uppercase font-bold tracking-widest text-gray-500">Autopilot Engaged</span>
                     </div>
                 )}
+
+
+                {/* Extra Options (Style Controls, etc) */}
+                {
+                    extraOptions && (
+                        <div className="mt-3">
+                            {extraOptions}
+                        </div>
+                    )
+                }
 
                 {/* Global Generate Button (Outside input box for Autopilot, inside logic for Manual flow but visual consistency) */}
                 <div className="mt-3 flex justify-end">
@@ -185,8 +197,8 @@ export function PromptBar({
                         {!isGenerating && <span className="text-[10px] opacity-70">⏎</span>}
                     </button>
                 </div>
-            </div>
-        </div>
+            </div >
+        </div >
     );
 }
 

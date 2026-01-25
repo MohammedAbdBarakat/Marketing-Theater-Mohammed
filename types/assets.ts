@@ -51,6 +51,8 @@ export interface GenerateAssetRequest {
     aspect_ratio?: "1:1" | "16:9" | "9:16" | "4:5" | "3:4"; // Default: "4:5"
     reference_image?: string; // Base64 string or URL
     description?: string; // Optional context override
+    style_class?: string;
+    use_custom_styles?: boolean;
 }
 
 export interface EditAssetRequest {

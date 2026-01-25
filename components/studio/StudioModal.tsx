@@ -6,6 +6,7 @@ import { useStudio } from "../../hooks/useStudio";
 import { AssetPreview } from "./AssetPreview";
 import { PromptBar, PromptMode } from "./PromptBar";
 import { VideoMixer } from "./VideoMixer";
+import { StyleControls } from "./StyleControls";
 
 interface StudioModalProps {
     assetId: string;
@@ -125,7 +126,11 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
         editSlide,
         canEditSlide,
         videoOverrides,
-        setVideoOverrides
+        setVideoOverrides,
+        styleClass,
+        setStyleClass,
+        useCustomStyles,
+        setUseCustomStyles
     } = useStudio(runId, assetId, initialContext.type);
 
     const isVideo = (initialContext.type || "").toLowerCase() === 'video';
@@ -418,49 +423,57 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
                             onInputModeChange={setInputMode}
                             controls={(
                                 <>
-                                    {/* 🛠️ FIX: HIDE Ratio for Video */}
+                                    {/* 1. Ratio Control */}
                                     {!isVideo && (
-                                        <div className="flex items-center gap-2 border-r border-gray-200 pr-4 mr-2">
-                                            <span className="text-[10px] font-bold text-gray-400 uppercase">Ratio</span>
+                                        <div className="flex items-center gap-1.5 bg-gray-50 rounded-md px-2 py-1 border border-gray-100 hover:border-gray-200 transition-colors">
+                                            <span className="text-[9px] uppercase font-bold text-gray-400 tracking-wider">Ratio</span>
                                             <select
                                                 value={aspectRatio}
                                                 onChange={e => setAspectRatio(e.target.value)}
                                                 disabled={isGenerating || activeVersion?.status === "processing"}
-                                                className="text-xs border-none bg-gray-100 rounded-md py-1 pl-2 pr-6 focus:ring-0 cursor-pointer font-medium"
+                                                className="text-[10px] bg-transparent border-none focus:ring-0 p-0 pr-4 cursor-pointer font-medium text-gray-700 hover:text-black transition-colors min-w-[50px]"
                                             >
                                                 {["1:1", "16:9", "9:16", "4:5", "3:4"].map(r => <option key={r} value={r}>{r}</option>)}
                                             </select>
                                         </div>
                                     )}
 
+                                    {/* 2. Slide Count (Grouped) */}
                                     {isCarousel && (
-                                        <>
-                                            <div className="flex items-center gap-2 border-r border-gray-200 pr-4 mr-2">
-                                                <span className="text-[10px] font-bold text-gray-400 uppercase">Slides</span>
-                                                <div className="flex gap-1 bg-gray-100 p-0.5 rounded-md">
-                                                    {[3, 4, 5].map(n => (
-                                                        <button
-                                                            key={n}
-                                                            onClick={() => setTargetSlideCount(n)}
-                                                            className={`w-6 h-6 flex items-center justify-center text-[10px] font-bold rounded transition-all
+                                        <div className="flex items-center gap-1 p-0.5 bg-gray-100 rounded-md border border-gray-200">
+                                            {[3, 4, 5].map(n => (
+                                                <button
+                                                    key={n}
+                                                    onClick={() => setTargetSlideCount(n)}
+                                                    className={`w-5 h-5 flex items-center justify-center text-[9px] font-bold rounded transition-all
                                                                 ${targetSlideCount === n ? 'bg-white shadow-sm text-black' : 'text-gray-400 hover:text-gray-600'}`}
-                                                        >
-                                                            {n}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                            <label className="flex items-center gap-2 cursor-pointer group">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={stepByStep}
-                                                    onChange={e => setStepByStep(e.target.checked)}
-                                                    className="w-3.5 h-3.5 rounded border-gray-300 text-black focus:ring-0 checked:bg-black transition-colors"
-                                                />
-                                                <span className="text-xs font-medium text-gray-500 group-hover:text-gray-900 transition-colors">Step-by-Step</span>
-                                            </label>
-                                        </>
+                                                >
+                                                    {n}
+                                                </button>
+                                            ))}
+                                        </div>
                                     )}
+
+                                    {/* 3. Step-by-Step Toggle */}
+                                    {isCarousel && (
+                                        <label className="flex items-center gap-1.5 px-2 py-1 cursor-pointer group bg-white border border-dashed border-gray-300 rounded-md hover:border-gray-400 hover:bg-gray-50 transition-all">
+                                            <input
+                                                type="checkbox"
+                                                checked={stepByStep}
+                                                onChange={e => setStepByStep(e.target.checked)}
+                                                className="w-3 h-3 rounded border-gray-300 text-black focus:ring-0 checked:bg-black transition-colors"
+                                            />
+                                            <span className="text-[9px] uppercase font-bold text-gray-400 group-hover:text-gray-600 tracking-wider transition-colors">Step-by-Step</span>
+                                        </label>
+                                    )}
+
+                                    {/* 4. Style Controls (Injected Fragments) */}
+                                    <StyleControls
+                                        styleClass={styleClass}
+                                        useCustomStyles={useCustomStyles}
+                                        onChangeStyle={setStyleClass}
+                                        onChangeCustom={setUseCustomStyles}
+                                    />
                                 </>
                             )}
                         />
@@ -468,6 +481,6 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
 
                 </div>
             </div>
-        </div>
+        </div >
     );
 }

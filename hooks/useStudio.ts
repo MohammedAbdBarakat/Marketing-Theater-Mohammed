@@ -29,6 +29,10 @@ export function useStudio(runId: string, assetId: string, initialType: string) {
     // Aspect Ratio Config
     const [aspectRatio, setAspectRatio] = useState<string>("4:5");
 
+    // ✨ Style Config
+    const [styleClass, setStyleClass] = useState<string | null>(null);
+    const [useCustomStyles, setUseCustomStyles] = useState(true);
+
     const setTargetSlideCount = (count: number) => {
         setTargetSlideCountState(count);
         // Auto-switch to structured mode or resize if already in it
@@ -272,7 +276,11 @@ export function useStudio(runId: string, assetId: string, initialType: string) {
                 finalPromptToSend,
                 isCarousel ? stepByStep : false,
                 isCarousel ? targetSlideCount : 1,
-                { aspect_ratio: aspectRatio }
+                {
+                    aspect_ratio: aspectRatio,
+                    style_class: styleClass || undefined,
+                    use_custom_styles: useCustomStyles
+                }
             );
 
             // Construct proper AssetVersion from response
@@ -459,6 +467,10 @@ export function useStudio(runId: string, assetId: string, initialType: string) {
         setStepByStep,
         aspectRatio,
         setAspectRatio,
+        styleClass,
+        setStyleClass,
+        useCustomStyles,
+        setUseCustomStyles,
 
         // Actions
         handlePlan,

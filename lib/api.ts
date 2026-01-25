@@ -101,6 +101,40 @@ export async function getVideoOptions(): Promise<VideoOptions> {
   });
 }
 
+// --- Style Endpoints ---
+
+interface StyleResponse {
+  styles: string[];
+}
+
+export async function fetchStyleClasses(): Promise<string[]> {
+  const MOCK_STYLES = [
+    "Neon Cyberpunk",
+    "Minimalist Clean",
+    "Corporate Professional",
+    "Playful Pop",
+    "Cinematic Dark",
+    "Luxury Gold",
+    "Retro 80s",
+    "Nature Organic"
+  ];
+
+  if (IS_REMOTE) {
+    try {
+      const data = await http<StyleResponse>('/api/styles');
+      if (data.styles && data.styles.length > 0) return data.styles;
+    } catch (e) {
+      console.warn("Failed to fetch styles, using fallback", e);
+    }
+  }
+
+  // Mock / Fallback Styles
+  return new Promise(resolve => {
+    // Return immediately if fallback, or small delay for mock feel
+    setTimeout(() => resolve(MOCK_STYLES), 200);
+  });
+}
+
 // --- Studio Endpoints ---
 
 export async function getAssetHistory(assetId: string): Promise<AssetVersion[]> {
@@ -162,15 +196,17 @@ export async function generateAsset(
   finalPrompt: string | undefined,
   stepByStep: boolean = false,
   targetSlideCount: number = 1,
-  options: { aspect_ratio?: string } = {}
+  options: { aspect_ratio?: string; style_class?: string; use_custom_styles?: boolean } = {}
 ): Promise<AssetVersion> {
   if (IS_REMOTE) {
     // ✅ AUTOPILOT MODE: Only include final_prompt if it has content
     // Backend triggers auto-planner when final_prompt is NOT provided
-    const payload: GenerateAssetRequest = {
+    const payload: any = { // Using any temporarily if type isn't updated yet, or I update type next
       step_by_step: stepByStep,
       slide_count: targetSlideCount,
-      aspect_ratio: options.aspect_ratio as any
+      aspect_ratio: options.aspect_ratio as any,
+      style_class: options.style_class,
+      use_custom_styles: options.use_custom_styles ?? true
     };
 
     // Only add final_prompt if user provided content (Manual Mode)

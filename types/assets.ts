@@ -80,5 +80,6 @@ export interface AssetUpdateEvent {
     error?: string;     // Present if failed
     count?: number;     // Total count (on completion)
     progress_message?: string;
+    message?: string; // 🆕 New standard field
 }
 

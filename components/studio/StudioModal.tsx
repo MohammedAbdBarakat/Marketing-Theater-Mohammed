@@ -342,13 +342,19 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
                                 <h3 className="text-gray-900 font-medium mb-1">Canvas Empty</h3>
                                 <p className="text-sm max-w-xs mx-auto">Use the controls below to plan or generate your asset.</p>
                             </div>
-                        ) : (activeVersion.status === "processing" || activeVersion.status === "created") && activeVersion.assets.length === 0 ? (
+                        ) : (activeVersion.status === "processing" || activeVersion.status === "created" || activeVersion.status === "planning") && activeVersion.assets.length === 0 ? (
                             <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
                                 <div className="animate-spin rounded-full h-12 w-12 border-[3px] border-gray-200 border-t-black mb-6" />
                                 {/* Dynamic Message */}
-                                <h3 className="text-gray-900 font-medium animate-pulse">
-                                    {activeVersion.current_progress_message || "Initializing Production..."}
-                                </h3>
+                                {/* Dynamic Status & Stream Log */}
+                                <div className="space-y-2 max-w-sm">
+                                    <h3 className="text-lg font-semibold text-gray-900 tracking-tight">
+                                        {activeVersion.status === 'planning' ? "Planning Asset" : "Generating Media"}
+                                    </h3>
+                                    <p className="text-sm text-gray-500 font-mono animate-pulse transition-all duration-300 min-h-[20px]">
+                                        {activeVersion.current_progress_message || "Initializing..."}
+                                    </p>
+                                </div>
                             </div>
                         ) : (
                             <>

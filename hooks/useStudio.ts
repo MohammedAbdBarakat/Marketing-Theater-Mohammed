@@ -139,8 +139,8 @@ export function useStudio(runId: string, assetId: string, initialType: string) {
 
 
                 // ✨ CAPTURE MESSAGE
-                if (event.progress_message) {
-                    updated.current_progress_message = event.progress_message;
+                if (event.message || event.progress_message) {
+                    updated.current_progress_message = event.message || event.progress_message;
                 }
 
                 // Handle Slide/URL Update
@@ -329,12 +329,19 @@ export function useStudio(runId: string, assetId: string, initialType: string) {
                     // 1. Start with remote list (source of truth for existing)
                     const merged = list.map(remoteV => {
                         const localV = prevMap.get(remoteV.id);
-                        if (localV && (localV.status === 'processing' || localV.status === 'waiting_for_approval')) {
-                            // If local has more assets (from stream), keep them.
-                            const localCount = localV.assets?.length || 0;
-                            const remoteCount = remoteV.assets?.length || 0;
-                            if (localCount > remoteCount) {
-                                return { ...remoteV, assets: localV.assets };
+                        if (localV) {
+                            // ✨ Preserve ephemeral stream data (message)
+                            if (localV.current_progress_message) {
+                                remoteV.current_progress_message = localV.current_progress_message;
+                            }
+
+                            if (localV.status === 'processing' || localV.status === 'waiting_for_approval') {
+                                // If local has more assets (from stream), keep them.
+                                const localCount = localV.assets?.length || 0;
+                                const remoteCount = remoteV.assets?.length || 0;
+                                if (localCount > remoteCount) {
+                                    remoteV.assets = localV.assets;
+                                }
                             }
                         }
                         return remoteV;

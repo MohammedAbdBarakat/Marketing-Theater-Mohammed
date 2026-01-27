@@ -14,6 +14,7 @@ export default function ReviewPage() {
     project.brand.guidelinesText || ""
   );
   const [extracting, setExtracting] = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
   const auto = useRef(false);
 
   useEffect(() => {
@@ -29,12 +30,18 @@ export default function ReviewPage() {
   }, []);
 
   async function onStart() {
-    const { runId } = await createRun({
-      projectId: id,
-      snapshot: { brand: project.brand, strategy: project.strategy },
-    });
-    run.setRunId(runId);
-    router.push(`/projects/${id}/run`);
+    setIsStarting(true);
+    try {
+      const { runId } = await createRun({
+        projectId: id,
+        snapshot: { brand: project.brand, strategy: project.strategy },
+      });
+      run.setRunId(runId);
+      router.push(`/projects/${id}/run`);
+    } catch (e) {
+      console.error(e);
+      setIsStarting(false);
+    }
   }
 
   async function onExtract() {
@@ -216,7 +223,7 @@ export default function ReviewPage() {
           </ul>
         </section>
       </div>
-       <div className="flex justify-end gap-2">
+      <div className="flex justify-end gap-2">
         <button
           className="px-4 py-2 rounded border"
           onClick={() => router.push(`/projects/${id}/inputs/strategy`)}
@@ -232,9 +239,9 @@ export default function ReviewPage() {
             onStart();
           }}
         >
-           {extracting ? (
-             <>Wait for DNA...</>
-           ) : "Start Strategy Build"}
+          {extracting ? (
+            <>Wait for DNA...</>
+          ) : "Start Strategy Build"}
         </button>
       </div>
     </div>

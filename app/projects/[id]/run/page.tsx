@@ -37,7 +37,18 @@ export default function RunPage() {
       if (latest && latest.runId === runId) {
         // 1. تحديث الرزنامة بالبيانات التي تحتوي على Real IDs
         if (latest.calendar) {
-          run.setCalendar(latest.calendar as any);
+          // Normalize keys (e.g. "2026-01-21 00:00:00" -> "2026-01-21")
+          const normalize = (cal: Record<string, any[]>) => {
+            const norm: Record<string, any[]> = {};
+            for (const [key, list] of Object.entries(cal)) {
+              const d = key.split(" ")[0].split("T")[0];
+              if (dayjs(d).isValid()) {
+                norm[d] = [...(norm[d] || []), ...list];
+              }
+            }
+            return norm;
+          };
+          run.setCalendar(normalize(latest.calendar as any));
           console.log("✅ Calendar synced with DB (Real IDs loaded).");
         }
 
@@ -101,8 +112,15 @@ export default function RunPage() {
     let eventSource: any = null;
 
     async function initRun() {
+      // 0. Reset Store to prevent state bleed from previous projects
+      // We do this inside initRun to ensure it happens as part of the loading sequence for this ID.
+      // Note: This clears runId, so we rely on fetching 'latest' or starting fresh.
+      run.reset();
+
       try {
-        let activeRunId = run.runId;
+        let activeRunId: string | undefined = undefined; // Was run.runId, but we just reset it. 
+        // If we wanted to preserve state on same-project nav, we'd need to check if run.projectId === id. 
+        // But store doesn't have projectId. Safe approach: Always reset and refetch/hydrate.
 
         // 1. Initial Fetch (Get ID + Hydrate State)
         if (!activeRunId) {
@@ -272,7 +290,14 @@ export default function RunPage() {
                 case "calendar_day":
                   run.setPhaseStatus(4, "running");
                   run.setCurrentPhase(4);
-                  run.addCalendarEntries(ev.date, ev.entries);
+                  // Normalize date key to ensure real-time updates match UI expectations (YYYY-MM-DD)
+                  const normalizedDate = ev.date.split(" ")[0].split("T")[0];
+                  if (dayjs(normalizedDate).isValid()) {
+                    run.addCalendarEntries(normalizedDate, ev.entries);
+                  } else {
+                    // Fallback to original if valid check fails, though likely won't happen
+                    run.addCalendarEntries(ev.date, ev.entries);
+                  }
                   break;
 
                 case "campaign_events":

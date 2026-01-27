@@ -46,11 +46,27 @@ export default function CalendarDayPage() {
         }
 
         const snap = await getLatestRunForProject(id);
-        const fromSnap: CalendarEntry[] =
-          (snap?.calendar?.[date] ?? []) as unknown as CalendarEntry[];
+
+        // Helper to normalize keys (e.g. "2026-01-21 00:00:00" -> "2026-01-21")
+        // Duplicated from calendar/page.tsx to ensure consistent behavior on direct reload
+        const normalize = (cal: Record<string, CalendarEntry[]>) => {
+          const norm: Record<string, CalendarEntry[]> = {};
+          if (!cal) return norm;
+          for (const [key, list] of Object.entries(cal)) {
+            const d = key.split(" ")[0].split("T")[0];
+            if (dayjs(d).isValid()) {
+              norm[d] = [...(norm[d] || []), ...list];
+            }
+          }
+          return norm;
+        };
+
+        const normalizedCalendar = normalize(snap?.calendar as unknown as Record<string, CalendarEntry[]>);
+        const fromSnap: CalendarEntry[] = normalizedCalendar[date] || [];
+
         if (snap) {
           run.setRunId(snap.runId);
-          run.setCalendar(snap.calendar as unknown as Record<string, CalendarEntry[]>);
+          run.setCalendar(normalizedCalendar);
           run.setPhaseStatus(4, "done");
           run.setCurrentPhase(5);
           run.setStatus("done");

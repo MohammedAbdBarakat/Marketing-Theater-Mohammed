@@ -57,6 +57,9 @@ export function EventsSelectionModal({
                         day_index: day.day_index,
                         event_name: event.name,
                         country: event.country,
+                        description: event.description,
+                        type: event.type,
+                        date: day.date,
                     });
                 }
             });

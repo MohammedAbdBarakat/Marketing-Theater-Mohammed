@@ -2,6 +2,7 @@ import { nanoid } from "nanoid";
 import { IS_REMOTE } from "./config";
 import { http } from "./http";
 import { AssetVersion, PhaseResult, GenerateAssetRequest, EditAssetRequest } from "../types/assets";
+import { EventSelection } from "../types/events";
 export * from "../types/assets";
 
 export type Duration = { start: string; end: string };
@@ -866,7 +867,7 @@ export type { EventSelection, CampaignDay, RegionalEvent } from "../types/events
 
 export async function confirmEventSelection(
   runId: string,
-  selectedEvents: { day_index: number; event_name: string; country?: string }[]
+  selectedEvents: EventSelection[]
 ): Promise<{ status: string; event_count: number }> {
   if (IS_REMOTE) {
     return http<{ status: string; event_count: number }>(`/runs/${runId}/confirm-events`, {

@@ -24,6 +24,7 @@ export default function RunPage() {
   const [eventsPrompt, setEventsPrompt] = useState<CampaignDay[] | null>(null);
   const [isResetting, setIsResetting] = useState(false);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  const [isWaitingForEvents, setIsWaitingForEvents] = useState(false);
 
   const duration = useMemo(() => ({ start: project.duration.start, end: project.duration.end }), [project.duration]);
 
@@ -201,12 +202,16 @@ export default function RunPage() {
         // Let's Try calling startRun. If it fails or says running, we continue.
         try {
           const { startRun } = await import("../../../../lib/api"); // dynamic import to avoid circ dep if any
-          await startRun(activeRunId);
+          const startRes = await startRun(activeRunId);
+          if (startRes.status === "waiting_for_events") {
+            run.setStatus("waiting_for_events");
+          } else {
+            run.setStatus("running");
+          }
         } catch (e) {
           console.warn("Start run warning:", e);
+          run.setStatus("running"); // Fallback
         }
-
-        run.setStatus("running");
         setConn("open");
 
         // 3. LISTEN (Pure Listener)
@@ -220,6 +225,7 @@ export default function RunPage() {
           {
             onEvent: async (ev: any) => {
               // 1. Handle Status Update (Priority Override)
+              // 1. Handle Status Update (Priority Override)
               if (ev.type === "status_update") {
                 authoritativeStatus = ev.status;
                 run.setStatus(ev.status); // Update global store!
@@ -227,6 +233,18 @@ export default function RunPage() {
                 // If we are NOT waiting for selection, ensure panel is hidden
                 if (ev.status !== "waiting_for_selection") {
                   setStrategyPrompt(null);
+                }
+
+                // If we are NOT waiting for events, hide events modal
+                // BUT: Only hide if we move PAST it (e.g. running_phase_4 or waiting_for_approval)
+                // If we transition TO waiting_for_events, we want to KEEP the modal if it's open.
+                if (ev.status !== "waiting_for_events" && ev.status !== "waiting_for_selection") { // Keep logic consistent or strictly based on status
+                  // actually, we should only clear if we are moving to a "running" or "done" state that implies we passed it.
+                  // But let's trust the modal's own Close/Confirm logic to clear it, primarily.
+                  // However, if we receive "running_phase_4", we definitely want to close it.
+                  if (ev.status === "running_phase_4" || ev.status === "completed") {
+                    setEventsPrompt(null);
+                  }
                 }
                 return;
               }
@@ -264,16 +282,23 @@ export default function RunPage() {
                   const hasCalendarData = Object.keys(currentStore.calendar).length > 0;
                   const isPhase4Done = currentStore.phases[4] === "done";
 
+                  console.log("DEBUG: campaign_events received", {
+                    days: ev.days,
+                    hasCalendarData,
+                    isPhase4Done,
+                    calendarKeys: Object.keys(currentStore.calendar)
+                  });
+
+                  // RELAXED CHECK: Only block if we are strictly done. But even then, if backend sends it, maybe we should show it?
+                  // For now, logging and ALLOWING it to show helps unblock the user.
                   if (hasCalendarData || isPhase4Done) {
-                    console.log("Ignoring campaign_events event because Phase 4 is already done/has content.");
-                    return;
+                    console.warn("⚠️ Received campaign_events despite having data. Processing anyway to ensure Modal shows.");
+                    // return; // <--- Commented out to fix "Modal not showing" issue
                   }
 
-                  if (ev.days?.every((d: CampaignDay) => d.events.length === 0)) {
-                    await confirmEventSelection(activeRunId!, []);
-                  } else {
-                    setEventsPrompt(ev.days || []);
-                  }
+                  setIsWaitingForEvents(false); // Stop loading
+
+                  setEventsPrompt(ev.days || []);
                   break;
 
                 case "done":
@@ -313,6 +338,7 @@ export default function RunPage() {
     run.setSelectedStrategy(idSelected);
     if (run.runId) await selectStrategy(run.runId, idSelected);
     setStrategyPrompt(null);
+    setIsWaitingForEvents(true); // Start waiting for campaigns events
   }
 
   const currentLogs = run.theater[run.currentPhase as 1 | 2 | 3 | 4 | 5] || [];
@@ -355,7 +381,7 @@ export default function RunPage() {
         />
       )}
 
-      {eventsPrompt && (
+      {(eventsPrompt || (run.status === "waiting_for_events" && eventsPrompt)) && (
         <EventsSelectionModal
           isOpen={!!eventsPrompt}
           days={eventsPrompt}

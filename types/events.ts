@@ -23,4 +23,7 @@ export interface EventSelection {
     day_index: number;
     event_name: string;
     country?: string;
+    description?: string;
+    type?: string;
+    date?: string;
 }

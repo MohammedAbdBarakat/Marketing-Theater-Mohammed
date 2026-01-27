@@ -15,18 +15,19 @@ function normalizeCalendarDates(
 ): Record<string, CalendarEntry[]> {
   const normalized: Record<string, CalendarEntry[]> = {};
 
-  for (const [rawKey, entries] of Object.entries(rawCalendar)) {
-    // Extract YYYY-MM-DD from various formats:
-    // "2026-01-21 00:25:30.722557" -> "2026-01-21"
-    // "2026-01-21T00:25:30.722557" -> "2026-01-21"
-    // "2026-01-21" -> "2026-01-21"
-    const dateOnly = rawKey.split(/[T ]/)[0];
-
-    if (normalized[dateOnly]) {
-      // Merge entries if multiple timestamps point to same date
-      normalized[dateOnly] = [...normalized[dateOnly], ...entries];
+  for (const [rawKey, list] of Object.entries(rawCalendar)) {
+    // 1. Try key (handle timestamps like "2026-01-21 00:25:30" => "2026-01-21")
+    const dateStr = rawKey.split(" ")[0].split("T")[0];
+    if (dayjs(dateStr).isValid()) {
+      normalized[dateStr] = [...(normalized[dateStr] || []), ...list];
     } else {
-      normalized[dateOnly] = entries;
+      // 2. Try entry.date if key parsing fails
+      list.forEach(item => {
+        const itemDate = item.date?.split(" ")[0].split("T")[0];
+        if (itemDate && dayjs(itemDate).isValid()) {
+          normalized[itemDate] = [...(normalized[itemDate] || []), item];
+        }
+      });
     }
   }
 

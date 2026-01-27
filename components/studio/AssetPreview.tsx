@@ -124,16 +124,24 @@ export function AssetPreview({ assets, selectedSlideInfo, onSelectSlide, hideThu
                 </div>
 
                 {/* Edit Modal (Portal-like behavior but rendered here for now) */}
+                {/* Edit Modal (Portal-like behavior but rendered here for now) */}
                 {isEditModalOpen && onEdit && (
                     <EditModal
                         isOpen={isEditModalOpen}
                         onClose={() => setIsEditModalOpen(false)}
                         currentAsset={currentAsset}
                         slideNum={currentSlideNum}
-                        onSubmit={(prompt, refs) => {
-                            onEdit(currentSlideNum, prompt, refs);
+                        onSubmit={async (prompt, refs) => {
+                            // Wait for the edit submission to complete (returns when optimistic update is done)
+                            await onEdit(currentSlideNum, prompt, refs);
                             setIsEditModalOpen(false);
                         }}
+                        isLoading={false} // We can't easily access global isGenerating here without passing it down. 
+                    // BUT: EditModal can have its own local loading state if onSubmit returns a promise? 
+                    // Wait, EditModal component implementation:
+                    // <button onClick={handleSubmit} disabled={isLoading}>
+                    // handleSubmit calls onSubmit(prompt...) then resets state. It does NOT wait.
+                    // I should update EditModal to await onSubmit if it returns a promise.
                     />
                 )}
 

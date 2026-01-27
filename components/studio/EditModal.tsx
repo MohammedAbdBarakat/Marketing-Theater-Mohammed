@@ -52,12 +52,19 @@ export function EditModal({
         setReferenceImages(prev => prev.filter((_, i) => i !== index));
     };
 
-    const handleSubmit = () => {
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const handleSubmit = async () => {
         if (!prompt.trim()) return;
-        onSubmit(prompt.trim(), referenceImages.length > 0 ? referenceImages : undefined);
-        // Reset state
-        setPrompt("");
-        setReferenceImages([]);
+        setIsSubmitting(true);
+        try {
+            await onSubmit(prompt.trim(), referenceImages.length > 0 ? referenceImages : undefined);
+            // Reset state only after success
+            setPrompt("");
+            setReferenceImages([]);
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     const handleClose = () => {
@@ -197,17 +204,17 @@ export function EditModal({
                 <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-white/10 bg-black/20">
                     <button
                         onClick={handleClose}
-                        disabled={isLoading}
+                        disabled={isLoading || isSubmitting}
                         className="px-4 py-2 text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 rounded-lg transition-colors disabled:opacity-50"
                     >
                         Cancel
                     </button>
                     <button
                         onClick={handleSubmit}
-                        disabled={!prompt.trim() || isLoading}
+                        disabled={!prompt.trim() || isLoading || isSubmitting}
                         className="px-5 py-2 text-sm font-medium bg-white text-black rounded-lg hover:bg-white/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                     >
-                        {isLoading ? (
+                        {isLoading || isSubmitting ? (
                             <>
                                 <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
                                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />

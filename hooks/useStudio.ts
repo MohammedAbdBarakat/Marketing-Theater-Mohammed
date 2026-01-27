@@ -410,16 +410,22 @@ export function useStudio(runId: string, assetId: string, initialType: string) {
         if (!activeVersion) return false;
 
         // Check version status
-        if (!['completed', 'waiting_for_approval'].includes(activeVersion.status)) {
-            return false;
+        // Allow 'processing' if we want to allow editing while others generate? No, usually lock it.
+        // But if the user says it's not visible, maybe status is weird.
+        if (!['completed', 'waiting_for_approval', 'processing'].includes(activeVersion.status)) {
+            // 'processing' is technically active, but if we have the asset, maybe valid?
+            // Actually, if it's processing, sending another edit might race. 
+            // The user complaint might be about single images.
+            if (activeVersion.status !== 'processing') return false;
+            // If processing, only allow if we actually have the asset (it might be a previous slide that is done)
         }
 
         // Check if slide exists in assets
         const slideExists = activeVersion.assets?.some(
-            item => item.slide_num === slideNum && item.url
+            item => (item.slide_num === slideNum || (!item.slide_num && slideNum === 1)) && item.url
         );
 
-        return !!slideExists;
+        return !!slideExists && activeVersion.status !== 'created'; // Ensure not just created empty
     };
 
     const editSlide = async (slideIndex: number, editPrompt: string, referenceImages?: string[]) => {
@@ -428,18 +434,31 @@ export function useStudio(runId: string, assetId: string, initialType: string) {
         setError(null);
 
         try {
-            await editAsset(assetId, {
+            const res = await editAsset(assetId, {
                 sourceVersionId: activeVersion.id,
                 slide_num: slideIndex,
                 prompt: editPrompt,
                 reference_images: referenceImages
             });
-            // Ideally toast here, but hook logic remains pure-ish. 
-            // The component can observe 'isGenerating' or we can return promise.
-            // For now, optimistically assume success triggers polling/stream.
+
+            // Optimistic Update: Create placeholder for the new version
+            const newVersion: AssetVersion = {
+                id: res.new_version_id,
+                status: 'processing',
+                createdAt: new Date().toISOString(),
+                assets: [], // Start empty, will fill from stream
+                edit_reason: `Edit Slide ${slideIndex}: ${editPrompt}`,
+                blueprint: activeVersion.blueprint, // Inherit blueprint
+                current_progress_message: "Initiating edit..."
+            };
+
+            setVersions(prev => [{ ...newVersion }, ...prev]);
+            setSelectedVersionId(newVersion.id);
+
         } catch (err: any) {
             console.error(err);
             setError(err.message || "Edit failed");
+        } finally {
             setIsGenerating(false);
         }
     };

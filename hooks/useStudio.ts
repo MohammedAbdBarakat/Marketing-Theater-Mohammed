@@ -168,8 +168,9 @@ export function useStudio(runId: string, assetId: string, initialType: string) {
                         }
                     } else {
                         // Regular URL string
+                        const determinedType = initialType.toLowerCase() === 'video' ? 'video' : 'image';
                         newAssets = [{
-                            type: "image",
+                            type: determinedType,
                             url: event.url,
                             slide_num: event.slide_num
                         }];

@@ -474,12 +474,14 @@ export function StudioModal({ assetId, runId, initialContext, onClose }: StudioM
                                     )}
 
                                     {/* 4. Style Controls (Injected Fragments) */}
-                                    <StyleControls
-                                        styleClass={styleClass}
-                                        useCustomStyles={useCustomStyles}
-                                        onChangeStyle={setStyleClass}
-                                        onChangeCustom={setUseCustomStyles}
-                                    />
+                                    {!isVideo && (
+                                        <StyleControls
+                                            styleClass={styleClass}
+                                            useCustomStyles={useCustomStyles}
+                                            onChangeStyle={setStyleClass}
+                                            onChangeCustom={setUseCustomStyles}
+                                        />
+                                    )}
                                 </>
                             )}
                         />
